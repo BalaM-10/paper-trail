@@ -1,0 +1,10 @@
+.papertrail/
+dist/
+build/
+__pycache__/
+.venv/
+node_modules/
+*.pyc
+*.pyo
+.pytest_cache/
+.hypothesis/

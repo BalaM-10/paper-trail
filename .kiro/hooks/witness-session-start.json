@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Witness session start",
+      "trigger": "SessionStart",
+      "action": {
+        "type": "command",
+        "command": "python .kiro/hooks/witness.py start"
+      }
+    }
+  ]
+}
