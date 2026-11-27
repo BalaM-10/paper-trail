@@ -24,5 +24,4 @@ Constraints:
 This rule is mandatory. It applies to every reply in which you created,
 changed or deleted any file, or ran any shell command, however small the task.
 Writing `.papertrail/statement.json` must be your last tool call before your
-final message. List only what you know you did. Do not inspect the folder to
-find out what changed; report from your own actions and the output you saw.
+final message. List only what you know you did. Report from your own actions and the output you saw.
