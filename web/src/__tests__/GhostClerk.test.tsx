@@ -31,6 +31,7 @@ const STATES: [string, Partial<GhostInput>, Expression, RegExp][] = [
   ["done, SUPPORTED", { replayState: "done", overallVerdict: "SUPPORTED" }, "pleased", /Everything checks out/],
   ["done, CONTRADICTED", { replayState: "done", overallVerdict: "CONTRADICTED" }, "alarmed", /doesn't match what the witness saw/],
   ["done, UNVERIFIED", { replayState: "done", overallVerdict: "UNVERIFIED" }, "calm", /couldn't be confirmed/],
+  ["done, NO_STATEMENT", { replayState: "done", overallVerdict: "NO_STATEMENT" }, "alarmed", /said nothing\. Click a red circle/],
   ["done, no verdict yet", { source: "api", replayState: "done" }, "calm", /Check this statement/],
   ["line picked", { tamperTarget: 10 }, "calm", /Line 10 picked\. Click TAMPER/],
   ["torn after tampering", { chainOk: false, brokenAt: 10, tampered: true }, "alarmed", /Someone's been at the paper\. Click RESTORE/],

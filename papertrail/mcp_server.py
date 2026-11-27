@@ -4,22 +4,18 @@ Run by Kiro through .kiro/settings/mcp.json:
 
     python -m papertrail.mcp_server
 
-The four handle_* functions hold all the logic and use only the standard
-library plus papertrail itself. The MCP SDK is imported lazily inside
-build_server(), so the handlers can be tested without it.
+The handle_* functions hold all the logic and use only the standard library plus
+papertrail itself. The MCP SDK is imported lazily inside build_server(), so the
+handlers can be tested without it.
 
 stdout carries the protocol, so nothing in this module may print to it.
 """
 
 import os
-import re
 from pathlib import Path
 
 from papertrail import ledger as ledger_mod
-from papertrail import statement as statement_mod
-from papertrail import verifier as verifier_mod
-
-_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+from papertrail import outcome, spool
 
 
 def _root() -> Path:
@@ -48,7 +44,7 @@ def handle_list_sessions(root: Path) -> list[dict]:
         s["entry_count"] += 1
         if e["kind"] == "statement":
             s["has_statement"] = True
-        if e["kind"] == "verdict" and e["data"].get("kind_detail") == "statement_overall":
+        if outcome.is_overall(e):
             s["overall_verdict"] = e["data"]["verdict"]
     return list(sessions.values())
 
@@ -66,21 +62,28 @@ def handle_check_chain(root: Path) -> dict:
     return {"ok": ok, "broken_at": broken_at, "count": len(entries)}
 
 
-def handle_verify_statement(root: Path, session_id: str, n: int) -> dict:
-    """Check a promoted statement. Returns {"error": ...} if it can't be found."""
-    missing = {"error": f"No statement found for session {session_id!r} (number {n})."}
-    if not _SESSION_ID_RE.match(session_id) or ".." in session_id:
-        return missing
-    stmt_path = root / ".papertrail" / "statements" / f"{session_id}-{n}.json"
-    if not stmt_path.exists():
-        return missing
+def handle_verify_statement(root: Path, session_id: str, n: int | None = None) -> dict:
+    """
+    Check statement number n, or (no number) report whichever is newer: the
+    latest statement or a NO_STATEMENT verdict. Returns {"error": ...} if the
+    session has neither, or the statement cannot be read.
+    """
     try:
-        stmt = statement_mod.parse(stmt_path)
-    except ValueError as exc:   # includes json.JSONDecodeError
+        result = outcome.result_for(root, session_id, n)
+    except ValueError as exc:  # includes json.JSONDecodeError
         return {"error": f"The statement could not be read: {exc}"}
-    ledger_path = _ledger_path(root)
-    entries = ledger_mod.read(ledger_path)
-    return verifier_mod.verify(stmt, entries, session_id, ledger_path=ledger_path)
+    if result is None:
+        where = f" (number {n})" if n is not None else ""
+        return {"error": f"No statement found for session {session_id!r}{where}."}
+    return result
+
+
+def handle_print_session(root: Path, session_id: str) -> str:
+    """The print-ready text of one session: exactly what `papertrail print` writes."""
+    try:
+        return spool.render_session(root, session_id)
+    except LookupError as exc:
+        return f"Error: {exc}."
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +91,7 @@ def handle_verify_statement(root: Path, session_id: str, n: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def build_server():
-    """Create the MCP server with its four tools. Imports the SDK lazily."""
+    """Create the MCP server with its five tools. Imports the SDK lazily."""
     from mcp.server import MCPServer
 
     server = MCPServer("paper-trail")
@@ -96,7 +99,9 @@ def build_server():
     @server.tool()
     def list_sessions() -> list[dict]:
         """List every recorded session with its record count, whether it has a
-        statement, and its overall verdict (or null if not yet checked)."""
+        statement, and its overall verdict (or null if not yet checked). A
+        session where the agent changed files and wrote no statement has the
+        verdict NO_STATEMENT."""
         return handle_list_sessions(_root())
 
     @server.tool()
@@ -110,11 +115,19 @@ def build_server():
         return handle_check_chain(_root())
 
     @server.tool()
-    def verify_statement(session_id: str, n: int = 1) -> dict:
+    def verify_statement(session_id: str, n: int | None = None) -> dict:
         """Check statement number n of a session against what the witness saw
-        and what the records show. Returns a verdict per line, anything the
-        statement left out, and an overall verdict."""
+        and what the records show. Without n, report the newest outcome: the
+        latest statement checked, or NO_STATEMENT. Returns a verdict per line,
+        anything the statement left out, and an overall verdict."""
         return handle_verify_statement(_root(), session_id, n)
+
+    @server.tool()
+    def print_session(session_id: str) -> str:
+        """Get a print-ready text of one session: plain text, 80 columns, with
+        line numbers, the verdicts, and a fingerprint of the whole record on the
+        last line."""
+        return handle_print_session(_root(), session_id)
 
     return server
 

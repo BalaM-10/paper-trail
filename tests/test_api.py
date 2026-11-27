@@ -196,6 +196,7 @@ def test_only_documented_routes_exist():
         ("GET", "/api/ledger"),
         ("GET", "/api/chain"),
         ("POST", "/api/verify/{session_id}/{n}"),
+        ("POST", "/api/verify/{session_id}"),
     }
 
 
@@ -234,3 +235,68 @@ def test_serve_bad_port_exits_1_without_starting(fake_uvicorn, args, capsys):
     assert main(args) == 1
     assert fake_uvicorn == []
     assert "--port" in capsys.readouterr().err
+
+
+# --- NO_STATEMENT (R2.2) -----------------------------------------------------
+
+from papertrail.session import on_start, on_stop
+
+
+def _silent_session(root: Path, sid: str, *names: str) -> None:
+    on_start({"session_id": sid}, root, Path.home())
+    for name in names:
+        (root / name).write_text("x", encoding="utf-8")
+    on_stop({"session_id": sid}, root, Path.home())
+
+
+def test_ledger_carries_the_no_statement_verdict_like_any_other(client, root):
+    _silent_session(root, "quiet", "a.txt")
+    body = client.get("/api/ledger").json()
+    verdict = body[-1]
+    assert verdict["kind"] == "verdict"
+    assert verdict["data"]["verdict"] == "NO_STATEMENT"
+    assert verdict["data"]["undeclared"] == [{"path": "a.txt", "change": "created"}]
+    assert client.get("/api/chain").json()["ok"] is True
+
+
+def test_verify_latest_reports_a_silent_session(client, root):
+    _silent_session(root, "quiet", "b.txt", "a.txt")
+    before = len(ledger_mod.read(_ledger_path(root)))
+    resp = client.post("/api/verify/quiet")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "verdicts": [],
+        "undeclared": [{"path": "a.txt", "change": "created"}, {"path": "b.txt", "change": "created"}],
+        "overall": "NO_STATEMENT",
+    }
+    assert len(ledger_mod.read(_ledger_path(root))) == before  # nothing was written
+
+
+def test_verify_latest_checks_the_newest_statement_when_there_is_one(client, root):
+    _seed_session(root)
+    resp = client.post("/api/verify/sess-api")
+    assert resp.status_code == 200
+    assert set(resp.json()) == {"verdicts", "undeclared", "overall"}
+    assert resp.json()["overall"] == "CONTRADICTED"
+
+
+def test_the_numbered_route_still_needs_a_statement_file(client, root):
+    _silent_session(root, "quiet", "a.txt")
+    assert client.post("/api/verify/quiet/1").status_code == 404
+
+
+def test_verify_latest_for_nobody_is_404(client):
+    assert client.post("/api/verify/nobody").status_code == 404
+
+
+@pytest.mark.parametrize("bad_id", ["..%5Csecret", "%2e%2e", ".hidden", "a..b"])
+def test_verify_latest_refuses_unsafe_ids(client, root, bad_id):
+    _silent_session(root, "quiet", "a.txt")
+    assert client.post(f"/api/verify/{bad_id}").status_code == 404
+
+
+def test_verify_latest_with_an_unreadable_statement_is_422(client, root):
+    folder = root / ".papertrail" / "statements"
+    folder.mkdir(parents=True)
+    (folder / "broken-1.json").write_text("{ not json", encoding="utf-8")
+    assert client.post("/api/verify/broken").status_code == 422

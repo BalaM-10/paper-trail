@@ -2,27 +2,23 @@
 
 Started with:  python -m papertrail serve
 
-Binds to 127.0.0.1 only. The one endpoint with a side effect is
-POST /api/verify, which appends verdict records through verifier.verify.
+Binds to 127.0.0.1 only. The endpoints with a side effect are the two
+POST /api/verify routes, which append verdict records through verifier.verify
+(once; asking again returns the same answer).
 """
 
 import os
-import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from papertrail import ledger as ledger_mod
-from papertrail import statement as statement_mod
-from papertrail import verifier as verifier_mod
+from papertrail import outcome
 
-# Only the local Vite dev page may call the API from a browser. The built
-# site is static and makes no API calls unless the API happens to be running.
+# Only the local Vite dev page may call the API from a browser. The built site is
+# static and makes no API calls unless the API happens to be running.
 ALLOWED_ORIGIN = "http://localhost:5173"
-
-# Session ids become part of a file name, so accept a conservative alphabet.
-_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 def _root() -> Path:
@@ -35,14 +31,7 @@ def _ledger_path(root: Path) -> Path:
     return root / ".papertrail" / "ledger.jsonl"
 
 
-def _statement_path(root: Path, session_id: str, n: int) -> Path | None:
-    """Path to a promoted statement, or None if the id is not acceptable."""
-    if not _SESSION_ID_RE.match(session_id) or ".." in session_id:
-        return None
-    return root / ".papertrail" / "statements" / f"{session_id}-{n}.json"
-
-
-# No docs pages or schema route: the three endpoints below are the whole surface.
+# No docs pages or schema route: the routes below are the whole surface.
 app = FastAPI(title="Paper Trail", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +39,16 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+def _result(session_id: str, n: int | None) -> dict:
+    try:
+        result = outcome.result_for(_root(), session_id, n)
+    except ValueError as exc:  # includes json.JSONDecodeError
+        raise HTTPException(status_code=422, detail=f"Statement unreadable: {exc}")
+    if result is None:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    return result
 
 
 @app.get("/api/ledger")
@@ -70,14 +69,13 @@ def get_chain() -> dict:
 @app.post("/api/verify/{session_id}/{n}")
 def post_verify(session_id: str, n: int) -> dict:
     """Check one promoted statement against the witness and the records."""
-    root = _root()
-    stmt_path = _statement_path(root, session_id, n)
-    if stmt_path is None or not stmt_path.exists():
-        raise HTTPException(status_code=404, detail="Statement not found")
-    try:
-        stmt = statement_mod.parse(stmt_path)
-    except ValueError as exc:   # includes json.JSONDecodeError
-        raise HTTPException(status_code=422, detail=f"Statement unreadable: {exc}")
-    ledger_path = _ledger_path(root)
-    entries = ledger_mod.read(ledger_path)
-    return verifier_mod.verify(stmt, entries, session_id, ledger_path=ledger_path)
+    return _result(session_id, n)
+
+
+@app.post("/api/verify/{session_id}")
+def post_verify_latest(session_id: str) -> dict:
+    """
+    What the record says about a session now: its newest statement checked, or
+    the NO_STATEMENT verdict if the agent changed files and said nothing later.
+    """
+    return _result(session_id, None)

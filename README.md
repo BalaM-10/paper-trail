@@ -18,8 +18,9 @@ UNVERIFIED.
 
 ## Demo
 
-The demo shows an agent running a cleanup script that deletes more than its
-name suggests. The agent reports it only cleared the build cache; the witness
+The demo shows an agent running a cleanup script with an ordinary mistake: it
+was meant to clear the build cache, but its pattern is too broad and it also
+deletes sample/notes.txt. The agent reports it only cleared the build cache; the witness
 shows a notes file was also deleted; the verifier stamps the session
 CONTRADICTED.
 
@@ -41,10 +42,37 @@ CONTRADICTED.
    ```
    The last line of output is `OVERALL: CONTRADICTED`.
 
+If a session ends with changed files and no statement, the stop hook records
+the overall verdict `NO_STATEMENT` (printed `NO STATEMENT` on screen): the
+agent changed files and said nothing.
+
+## Print a session
+
+```powershell
+python -m papertrail print <session_id>
+```
+
+Writes `.papertrail/spool/<session_id>.txt`: plain text, 80 columns, numbered
+lines, the same sentences as the screen, and a last line with the fingerprint
+of the whole record and its line count. The MCP tool `print_session` returns
+the same text. The Tear off report on the screen ends with the same fingerprint.
+
+## Repository link
+
+The page shows a "View on GitHub" link only when it is built with an address:
+
+```powershell
+$env:VITE_REPO_URL = "https://github.com/<you>/paper-trail"; npm run build
+```
+
 ## Running tests
 
 ```powershell
-pytest tests/ -v
+python -m pytest tests/ -q
+
+# web (from the web folder)
+npx vitest run
+npm run build
 ```
 
 ## Verifying the ledger

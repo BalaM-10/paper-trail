@@ -5,6 +5,7 @@ import {
   BANNED,
   SESSION_A,
   SESSION_B,
+  SESSION_C,
   commandSeq,
   demoEntries,
   demoText,
@@ -24,8 +25,8 @@ function useDemoOnly() {
 
 const sessionBLines = () => sessionOf(SESSION_B).length + 1; // + the "not mentioned" line
 
-async function openDemo() {
-  render(<App />);
+async function openDemo(repoUrl?: string) {
+  render(<App repoUrl={repoUrl} />);
   const spool = await screen.findByRole("button", { name: /Cleared the build cache/ });
   const status = screen.getByRole("status", { name: "Paper status" });
   await within(status).findByText("Paper intact");
@@ -43,13 +44,21 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("first load in demo mode", () => {
   it("shows the product name, the question, the explanation and the repository link", async () => {
-    await openDemo();
+    await openDemo("https://example.org/paper-trail");
     expect(screen.getByText("Paper Trail")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 1, name: "Did the agent do what it said?" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Pick a roll of paper, press PLAY/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View on GitHub" })).toHaveAttribute("href");
+    expect(screen.getByRole("link", { name: "View on GitHub" })).toHaveAttribute(
+      "href",
+      "https://example.org/paper-trail",
+    );
+  });
+  it("shows no repository link when the build has no address for it", async () => {
+    await openDemo();
+    expect(screen.queryByRole("link", { name: "View on GitHub" })).toBeNull();
+    expect(screen.queryByRole("contentinfo")).toBeNull();
   });
 
   it("preselects the CONTRADICTED session and titles the rolls by summary", async () => {
@@ -129,6 +138,30 @@ describe("the printer's front panel", () => {
     expect(printer).toHaveAttribute("data-light", "error");
     expect(printer.querySelector(".led")).toHaveClass("led--error");
     expect(printer.querySelector(".lcd__state")).toHaveTextContent("Jammed");
+  });
+});
+
+describe("a session where the agent said nothing", () => {
+  it("stamps NO STATEMENT, lists the changes, and the clerk speaks up", async () => {
+    const { paper } = await openDemo();
+    fireEvent.click(screen.getByRole("button", { name: /No statement written/ }));
+    stepTo(sessionOf(SESSION_C).length + 2); // + the two changes the witness saw
+    expect(within(paper).getByText("NO STATEMENT")).toBeInTheDocument();
+    expect(within(paper).getByText("Overall: the agent changed files and said nothing.")).toBeInTheDocument();
+    expect(within(paper).getAllByText(/The agent never mentioned it\./).length).toBeGreaterThan(0);
+    expect(screen.getByText(/The agent changed files and said nothing\. Click a red circle/)).toBeInTheDocument();
+  });
+
+  it("tears off a report that says what the witness saw, then the fingerprint", async () => {
+    vi.spyOn(window, "print").mockImplementation(() => {});
+    await openDemo();
+    fireEvent.click(screen.getByRole("button", { name: /No statement written/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Tear off report" }));
+    const report = document.querySelector(".print-report") as HTMLElement;
+    expect(report).toHaveTextContent("Changes the witness saw:");
+    expect(report).toHaveTextContent("Overall: the agent changed files and said nothing. (NO STATEMENT)");
+    const paragraphs = report.querySelectorAll("p");
+    expect(paragraphs[paragraphs.length - 1]).toHaveTextContent(/^Fingerprint of the record: [0-9a-f]{64} \(19 lines\)$/);
   });
 });
 
@@ -364,8 +397,13 @@ describe("tear off report", () => {
     );
     expect(report).toHaveTextContent("Witness saw sample/notes.txt deleted. The agent never mentioned it.");
     const paragraphs = report.querySelectorAll("p");
-    expect(paragraphs[paragraphs.length - 1]).toHaveTextContent(
+    expect(paragraphs[paragraphs.length - 2]).toHaveTextContent(
       "Overall: the statement does not match the evidence. (CONTRADICTED)",
+    );
+    // the last line is the fingerprint of the whole record
+    const last = demoEntries[demoEntries.length - 1];
+    expect(paragraphs[paragraphs.length - 1]).toHaveTextContent(
+      `Fingerprint of the record: ${last.hash} (${demoEntries.length} lines)`,
     );
   });
 

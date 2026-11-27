@@ -1,5 +1,5 @@
 import type { ChainResult } from "../lib/chainCheck";
-import { entryText } from "../lib/entryText";
+import { entryText, verdictWord } from "../lib/entryText";
 import type { DisplayEntry } from "../lib/synthesiseUndeclared";
 import { ChainStatus } from "./ChainStatus";
 
@@ -9,6 +9,8 @@ type Props = {
   chain: ChainResult | null;
   /** The session's lines, including the made-up "not mentioned" lines. */
   lines: DisplayEntry[];
+  /** The fingerprint sentence for the whole record. */
+  fingerprint: string;
 };
 
 /**
@@ -16,7 +18,7 @@ type Props = {
  * It lists everything, whether or not the replay has reached it, and ends
  * with the overall verdict.
  */
-export function PrintReport({ sessionId, title, chain, lines }: Props) {
+export function PrintReport({ sessionId, title, chain, lines, fingerprint }: Props) {
   const verdictLines = lines.filter(
     (l) => l.kind === "verdict" && l.data.kind_detail !== "statement_overall",
   );
@@ -25,6 +27,7 @@ export function PrintReport({ sessionId, title, chain, lines }: Props) {
     (l) => l.kind === "verdict" && l.data.kind_detail === "statement_overall",
   );
   const last = overall[overall.length - 1];
+  const silent = last !== undefined && last.data.verdict === "NO_STATEMENT";
 
   return (
     <section className="print-report" aria-hidden="true">
@@ -36,18 +39,21 @@ export function PrintReport({ sessionId, title, chain, lines }: Props) {
       </p>
       {verdictLines.map((l) => (
         <p key={l.seq} className="print-verdict-line">
-          {String(l.data.verdict)}: {entryText(l)}
+          {verdictWord(l.data.verdict)}: {entryText(l)}
         </p>
       ))}
-      {notMentioned.length > 0 && <p className="print-heading">Not mentioned in the statement:</p>}
+      {notMentioned.length > 0 && <p className="print-heading">
+          {silent ? "Changes the witness saw:" : "Not mentioned in the statement:"}
+        </p>}
       {notMentioned.map((l) => (
         <p key={l.seq} className="print-undeclared">
           {entryText(l)}
         </p>
       ))}
       <p className="print-verdict-line print-verdict-line--overall">
-        {last ? `${entryText(last)} (${String(last.data.verdict)})` : "Overall: not checked yet."}
+        {last ? `${entryText(last)} (${verdictWord(last.data.verdict)})` : "Overall: not checked yet."}
       </p>
+      <p className="print-fingerprint">{fingerprint}</p>
     </section>
   );
 }

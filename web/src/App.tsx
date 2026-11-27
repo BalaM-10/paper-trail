@@ -17,10 +17,11 @@ import { useChainCheck } from "./hooks/useChainCheck";
 import { useEntries } from "./hooks/useEntries";
 import { useFreshLine } from "./hooks/useFreshLine";
 import { useReplay } from "./hooks/useReplay";
+import { fingerprintText } from "./lib/entryText";
 import { buildSessionMeta } from "./lib/sessionMeta";
 import { synthesiseUndeclared } from "./lib/synthesiseUndeclared";
 
-export default function App() {
+export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {}) {
   const { entries, source, tamper, restore, isTampered, forceRefresh } = useEntries();
   const { result: chain, unavailable } = useChainCheck(entries);
   const sessions = useMemo(() => buildSessionMeta(entries), [entries]);
@@ -217,7 +218,7 @@ export default function App() {
             />
           </main>
 
-          <Footer repoUrl={__REPO_URL__} />
+          <Footer repoUrl={repoUrl} />
         </div>
       </div>
 
@@ -227,6 +228,7 @@ export default function App() {
           title={selectedMeta.title}
           chain={chain}
           lines={lines}
+          fingerprint={fingerprintText(entries)}
         />
       )}
     </div>

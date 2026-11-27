@@ -117,9 +117,11 @@ describe("readable contrast (WCAG AA, 4.5:1 for text)", () => {
     ["SUPPORTED stamp on a green bar", stampColour("supported"), v.band],
     ["CONTRADICTED stamp on a green bar", stampColour("contradicted"), v.band],
     ["UNVERIFIED stamp on a green bar", stampColour("unverified"), v.band],
+    ["NO STATEMENT stamp on a green bar", stampColour("no-statement"), v.band],
     ["SUPPORTED stamp on paper", stampColour("supported"), v["paper-bg"]],
     ["CONTRADICTED stamp on paper", stampColour("contradicted"), v["paper-bg"]],
     ["UNVERIFIED stamp on paper", stampColour("unverified"), v["paper-bg"]],
+    ["NO STATEMENT stamp on paper", stampColour("no-statement"), v["paper-bg"]],
     ["key label on a key", v["key-ink"], v["key-face"]],
     ["white label on the red key", "#ffffff", v["key-red"]],
     ["label on a key held down", v["key-on-ink"], v["key-on"]],
@@ -335,9 +337,9 @@ describe("red marker", () => {
     expect(phoneRing).toBeGreaterThan(at(".undeclared-circle__ring path"));
     expect(stampsCss.lastIndexOf("@media (max-width: 640px)")).toBeGreaterThan(at(".undeclared-circle__ring path"));
     const phone = stampsCss.slice(stampsCss.lastIndexOf("@media (max-width: 640px)"));
-    expect(phone).toMatch(/\.undeclared-circle__ring\s*\{\s*top:\s*-0\.7em;\s*left:\s*-1\.2em/);
+    expect(phone).toMatch(/\.undeclared-circle__ring\s*\{\s*top:\s*-1em;\s*left:\s*-1\.3em/);
     // and it still leaves the same room on both sides
-    expect(phone).toMatch(/width:\s*calc\(100% \+ 2\.4em\)/);
+    expect(phone).toMatch(/width:\s*calc\(100% \+ 2\.6em\)/);
   });
 
   it("the arrow in the margin is drawn in the same red marker", () => {

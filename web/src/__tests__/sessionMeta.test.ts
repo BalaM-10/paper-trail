@@ -21,8 +21,9 @@ describe("buildSessionMeta", () => {
     expect(metas.map((m) => m.title)).toEqual([
       "Read main.py and wrote a notes file.",
       "Cleared the build cache.",
+      "No statement written",
     ]);
-    expect(metas.map((m) => m.overallVerdict)).toEqual(["SUPPORTED", "CONTRADICTED"]);
+    expect(metas.map((m) => m.overallVerdict)).toEqual(["SUPPORTED", "CONTRADICTED", "NO_STATEMENT"]);
     expect(metas.every((m) => !m.hasUnverifiedStatement)).toBe(true);
   });
 

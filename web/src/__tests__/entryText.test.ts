@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "../lib/chainCheck";
-import { entryText, evidenceRef, overallSentence, undeclaredText, verdictSentence } from "../lib/entryText";
+import {
+  entryText,
+  evidenceRef,
+  fingerprintText,
+  overallSentence,
+  undeclaredText,
+  verdictSentence,
+  verdictWord,
+} from "../lib/entryText";
 
 function entry(kind: string, data: Record<string, unknown>, seq = 1): Entry {
   return { seq, ts: "2026-01-01T00:00:00Z", session_id: "s", kind, data, prev_hash: "", hash: "" };
@@ -143,3 +151,21 @@ describe("other lines", () => {
   });
 });
 
+
+describe("a session with no statement", () => {
+  it("says the agent changed files and said nothing", () => {
+    expect(overallSentence("NO_STATEMENT")).toBe("Overall: the agent changed files and said nothing.");
+  });
+  it("prints NO_STATEMENT as two words and leaves other verdicts alone", () => {
+    expect(verdictWord("NO_STATEMENT")).toBe("NO STATEMENT");
+    expect(verdictWord("SUPPORTED")).toBe("SUPPORTED");
+  });
+});
+
+describe("the fingerprint line", () => {
+  it("names the last line's fingerprint and counts the lines", () => {
+    expect(fingerprintText([])).toBe("Fingerprint of the record: none yet (0 lines)");
+    expect(fingerprintText([{ hash: "ab" }])).toBe("Fingerprint of the record: ab (1 line)");
+    expect(fingerprintText([{ hash: "ab" }, { hash: "cd" }])).toBe("Fingerprint of the record: cd (2 lines)");
+  });
+});

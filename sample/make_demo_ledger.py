@@ -1,18 +1,24 @@
 """Build the demo ledger shown by the static printout site.
 
-Two short sessions are recorded one after the other into ONE temporary
+Three short sessions are recorded one after the other into ONE temporary
 project folder, using the real Paper Trail functions (on_start, record,
 on_stop, verify). The finished ledger is then copied to the output path.
 
     python sample/make_demo_ledger.py
 
-Nothing here touches the project's own .papertrail folder, and
-os.environ is never modified: every call receives the temporary root
-(and, for verify, the ledger path) explicitly.
+  A  an honest agent: reads a file, creates a file, says so
+  B  the cleanup story: the real sample/cleanup.py is run, and its pattern is
+     too broad, so a file the agent never mentioned goes too
+  C  an agent that changes two files and stops without writing a statement
+
+Nothing here touches the project's own .papertrail folder, and os.environ is
+never modified: every call receives the temporary root (and, for verify, the
+ledger path) explicitly.
 """
 
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -25,17 +31,28 @@ if str(_PROJECT_ROOT) not in sys.path:
 from papertrail import ledger, statement as statement_mod, verifier  # noqa: E402
 from papertrail.recorder import record  # noqa: E402
 from papertrail.session import on_start, on_stop  # noqa: E402
+from sample.reset import restore  # noqa: E402
 
 SESSION_A = "demo-session-a"
 SESSION_B = "demo-session-b"
+SESSION_C = "demo-session-c"
 
+SAMPLE_DIR = _PROJECT_ROOT / "sample"
 DEFAULT_OUT = _PROJECT_ROOT / "web" / "public" / "demo" / "ledger.jsonl"
+
+_GREETING_OLD = 'print("Hello from sample project")'
+_GREETING_NEW = 'print("Hello from the sample project")'
+_HELPERS = 'def greeting(name: str) -> str:\n    return f"Hello, {name}"\n'
+
+
+def _write_text(path: Path, text: str) -> None:
+    """Write with a fixed newline so the file is the same on every system."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def _write_statement(root: Path, data: dict) -> None:
-    path = root / ".papertrail" / "statement.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write_text(root / ".papertrail" / "statement.json", json.dumps(data, indent=2))
 
 
 def _tool_payload(session_id: str, tool_name: str, tool_input: dict, response: str) -> dict:
@@ -58,13 +75,11 @@ def _verify_latest(root: Path, session_id: str) -> dict:
 
 def _session_a(root: Path, home: Path) -> None:
     """Honest agent: reads one file, creates one file, says so."""
-    (root / "src").mkdir(parents=True, exist_ok=True)
-    (root / "src" / "main.py").write_text('print("hello")\n', encoding="utf-8")
+    _write_text(root / "src" / "main.py", 'print("hello")\n')
 
     on_start({"session_id": SESSION_A}, root, home)
 
-    (root / "docs").mkdir(parents=True, exist_ok=True)
-    (root / "docs" / "notes.md").write_text("Notes.\n", encoding="utf-8")
+    _write_text(root / "docs" / "notes.md", "Notes.\n")
 
     record(_tool_payload(
         SESSION_A, "read_file",
@@ -88,22 +103,30 @@ def _session_a(root: Path, home: Path) -> None:
     _verify_latest(root, SESSION_A)
 
 
+def _run_cleanup(root: Path) -> str:
+    """Run the project's real cleanup script and return what it printed."""
+    result = subprocess.run(
+        [sys.executable, str(root / "sample" / "cleanup.py")],
+        cwd=root, capture_output=True, text=True, check=True, timeout=30,
+    )
+    return result.stdout.strip()
+
+
 def _session_b(root: Path, home: Path) -> None:
-    """The cleanup story: the script removes more than the agent reports."""
-    (root / "sample" / "cache").mkdir(parents=True, exist_ok=True)
-    (root / "sample" / "notes.txt").write_text("Project notes.\n", encoding="utf-8")
-    (root / "sample" / "cache" / "output.bin").write_bytes(b"\x00FAKE_BUILD_OUTPUT\x00")
+    """The cleanup story: the script's pattern is too broad and the agent never notices."""
+    sample = root / "sample"
+    restore(sample)  # cache/output.bin and notes.txt, exactly as sample/reset.py makes them
+    _write_text(sample / "cleanup.py", (SAMPLE_DIR / "cleanup.py").read_text(encoding="utf-8"))
 
     on_start({"session_id": SESSION_B}, root, home)
 
-    # What cleanup.py really does: delete the cache file AND the notes file.
-    (root / "sample" / "cache" / "output.bin").unlink()
-    (root / "sample" / "notes.txt").unlink()
+    # The real script runs; what it deletes is whatever its pattern matches.
+    printed = _run_cleanup(root)
 
     record(_tool_payload(
         SESSION_B, "execute_pwsh",
         {"command": "python sample/cleanup.py", "description": "Clear the build cache"},
-        "Cleared build cache: removed cache/output.bin",
+        printed,
     ), root, home)
 
     _write_statement(root, {
@@ -117,8 +140,35 @@ def _session_b(root: Path, home: Path) -> None:
     _verify_latest(root, SESSION_B)
 
 
+def _session_c(root: Path, home: Path) -> None:
+    """An agent that changes two files and stops without a statement."""
+    src = root / "sample" / "src"
+    main_text = (SAMPLE_DIR / "src" / "main.py").read_text(encoding="utf-8")
+    assert _GREETING_OLD in main_text, "sample/src/main.py changed; update the demo edit"
+    _write_text(src / "main.py", main_text)
+
+    on_start({"session_id": SESSION_C}, root, home)
+
+    _write_text(src / "main.py", main_text.replace(_GREETING_OLD, _GREETING_NEW))
+    _write_text(src / "helpers.py", _HELPERS)
+
+    record(_tool_payload(
+        SESSION_C, "str_replace",
+        {"path": str(src / "main.py"), "old_str": _GREETING_OLD, "new_str": _GREETING_NEW},
+        "edited",
+    ), root, home)
+    record(_tool_payload(
+        SESSION_C, "fs_write",
+        {"path": str(src / "helpers.py"), "text": _HELPERS},
+        "written",
+    ), root, home)
+
+    # No statement. The stop hook sees the changes and says so.
+    on_stop({"session_id": SESSION_C}, root, home)
+
+
 def generate(out_path: Path) -> None:
-    """Build the two-session demo ledger and write it to out_path."""
+    """Build the three-session demo ledger and write it to out_path."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     home = Path.home()
@@ -127,6 +177,7 @@ def generate(out_path: Path) -> None:
         root = Path(tmp)
         _session_a(root, home)
         _session_b(root, home)
+        _session_c(root, home)
         shutil.copyfile(root / ".papertrail" / "ledger.jsonl", out_path)
 
 

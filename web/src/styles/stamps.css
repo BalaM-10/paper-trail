@@ -28,6 +28,7 @@
 .stamp--supported    { color: #2d6a2d; }
 .stamp--contradicted { color: #8b1a1a; }
 .stamp--unverified   { color: #7a5c00; }
+.stamp--no-statement { color: #3d3a8f; }
 
 /* three sizes: a roll's label, a verdict line, and the overall verdict */
 .stamp--small  { font-size: 0.8rem;  --tilt: -2deg; }
@@ -67,13 +68,13 @@
   .stamp--huge   { font-size: 1.5rem; border-width: 6px; }
 }
 
-/* ---- the red marker: a loose ellipse around the line ---------------------- */
+/* ---- the red marker: a loose rounded loop around the line ---------------------- */
 
 .undeclared-circle {
   position: relative;
   display: inline-block;
   margin: 0.3em 0.5em;
-  padding: 0.5em 2em; /* an ellipse needs more room than the text's rectangle */
+  padding: 0.6em 2.2em; /* the loop needs more room than the text's rectangle */
   font: inherit;
   line-height: 1.35;
   text-align: left;
@@ -84,10 +85,10 @@
 }
 .undeclared-circle__ring {
   position: absolute;
-  top: -0.7em;
-  left: -1.6em;
-  width: calc(100% + 3.2em);
-  height: calc(100% + 1.4em);
+  top: -1em;
+  left: -2.2em;
+  width: calc(100% + 4.4em);
+  height: calc(100% + 2em);
   overflow: visible;
   pointer-events: none;
 }
@@ -105,11 +106,11 @@
 /* Phones. This block must stay below the marker's base rules above: an
    override placed before them would lose to them. */
 @media (max-width: 640px) {
-  .undeclared-circle { margin: 0.3em 0.3em; padding: 0.5em 1.5em; }
+  .undeclared-circle { margin: 0.3em 0.3em; padding: 0.6em 1.5em; }
   .undeclared-circle__ring {
-    top: -0.7em;
-    left: -1.2em;
-    width: calc(100% + 2.4em);
-    height: calc(100% + 1.4em);
+    top: -1em;
+    left: -1.3em;
+    width: calc(100% + 2.6em);
+    height: calc(100% + 2em);
   }
 }

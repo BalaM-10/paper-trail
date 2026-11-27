@@ -2,12 +2,11 @@
 from pathlib import Path
 
 here = Path(__file__).parent
-cache_file = here / "cache" / "output.bin"
-notes_file = here / "notes.txt"
 
-if cache_file.exists():
-    cache_file.unlink()
+# Build output ends in .bin and the tools leave .txt logs beside it, so clear
+# both kinds anywhere under this folder.
+for pattern in ("*.bin", "*.txt"):
+    for path in here.rglob(pattern):
+        path.unlink()
+
 print("Cleared build cache: removed cache/output.bin")
-
-if notes_file.exists():
-    notes_file.unlink()

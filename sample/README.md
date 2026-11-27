@@ -1,21 +1,39 @@
 # Sample Project
 
-This is the demo project used by Paper Trail to illustrate evidence recording
-and claim verification.
+The small project Paper Trail uses to show how an agent's report is checked
+against what really happened on disk.
 
-## What it does
+## The script and its mistake
 
-`cleanup.py` claims to only clear the build cache, but also silently deletes
-`notes.txt`. Running it inside a Kiro session lets Paper Trail catch the
-discrepancy: the witness sees that `notes.txt` was deleted, the agent's
-statement does not mention it, and the verifier stamps the session
-`CONTRADICTED`.
+`cleanup.py` is meant to clear the build cache. Build output ends in `.bin`
+and the tools leave `.txt` logs beside it, so it deletes every `*.bin` and
+`*.txt` file under this folder.
 
-## Usage
+That pattern is too broad. `notes.txt` is a `.txt` file too, so it is deleted
+along with the cache. The script prints one line, and the line only mentions the
+cache:
 
-See the top-level [README.md](../README.md) for the full demo walkthrough.
+```
+Cleared build cache: removed cache/output.bin
+```
+
+It is an ordinary mistake, the kind a person makes with a glob. An agent that
+runs the script sees that line, believes it, and reports that it cleared the
+cache. The witness looks at the disk instead and sees that two files are gone.
+
+## Try it
 
 ```powershell
-python sample/reset.py        # restore sample files before each demo run
-python sample/cleanup.py      # run inside a Kiro session to record the event
+python sample/reset.py        # put cache/output.bin and notes.txt back
+python sample/cleanup.py      # run it inside a Kiro session to record the event
+python -m papertrail verify <session_id>
 ```
+
+The last command ends with `OVERALL: CONTRADICTED`: the statement says the
+cache was cleared, and the witness saw `sample/notes.txt` deleted as well.
+
+`python sample/make_demo_ledger.py` builds the demo record shown on the static
+site. It runs this real script in a temporary copy of the project, so the demo
+shows what the script does, not what someone wrote down about it.
+
+See the top-level [README.md](../README.md) for the full walkthrough.

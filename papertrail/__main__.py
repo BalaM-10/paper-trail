@@ -5,8 +5,7 @@ import sys
 from pathlib import Path
 
 from papertrail import ledger as ledger_mod
-from papertrail import statement as statement_mod
-from papertrail import verifier as verifier_mod
+from papertrail import outcome, spool
 
 
 def _get_root() -> Path:
@@ -31,38 +30,22 @@ def _cmd_verify(args: list[str]) -> int:
             return 1
 
     root = _get_root()
-    stmts_dir = root / ".papertrail" / "statements"
 
-    # Find the right statement file.
-    if n is not None:
-        stmt_path = stmts_dir / f"{session_id}-{n}.json"
-        if not stmt_path.exists():
-            print(f"Error: no statement found for session {session_id} (index {n})")
-            return 1
-    else:
-        candidates = sorted(stmts_dir.glob(f"{session_id}-*.json"))
-        if not candidates:
-            print(f"Error: no statement found for session {session_id}")
-            return 1
-        # Pick the highest numeric suffix.
-        def _suffix(p: Path) -> int:
-            try:
-                return int(p.stem.rsplit("-", 1)[-1])
-            except ValueError:
-                return 0
-        stmt_path = max(candidates, key=_suffix)
-
-    # Parse and verify.
+    # A numbered statement, or (no number) whichever is newer: the latest statement
+    # or a NO_STATEMENT verdict the stop hook recorded.
     try:
-        stmt = statement_mod.parse(stmt_path)
-    except Exception as exc:
+        result = outcome.result_for(root, session_id, n)
+    except ValueError as exc:
         print(f"Error: could not parse statement: {exc}")
         return 1
+    except OSError as exc:
+        print(f"Error: {exc}")
+        return 1
 
-    ledger_path = root / ".papertrail" / "ledger.jsonl"
-    entries = ledger_mod.read(ledger_path)
-
-    result = verifier_mod.verify(stmt, entries, session_id)
+    if result is None:
+        where = f" (index {n})" if n is not None else ""
+        print(f"Error: no statement found for session {session_id}{where}")
+        return 1
 
     # Format output.
     lines: list[str] = []
@@ -110,6 +93,31 @@ def _cmd_check_chain(args: list[str]) -> int:
         return 1
 
 
+def _cmd_print(args: list[str]) -> int:
+    """Write .papertrail/spool/<session_id>.txt, ready for a printer."""
+    if not args:
+        print("Usage: python -m papertrail print <session_id>", file=sys.stderr)
+        return 1
+
+    session_id = args[0]
+    if not outcome.valid_session_id(session_id):
+        print(f"Error: {session_id!r} is not a usable session id", file=sys.stderr)
+        return 1
+
+    root = _get_root()
+    try:
+        path = spool.write(root, session_id)
+    except LookupError:
+        print(f"Error: no records found for session {session_id}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Wrote {path.relative_to(root).as_posix()}")
+    return 0
+
+
 DEFAULT_PORT = 8765
 
 
@@ -137,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
 
     if not argv:
-        print("Usage: python -m papertrail <verify|check-chain|serve> [args]", file=sys.stderr)
+        print("Usage: python -m papertrail <verify|check-chain|print|serve> [args]", file=sys.stderr)
         return 1
 
     cmd, *rest = argv
@@ -145,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_verify(rest)
     elif cmd == "check-chain":
         return _cmd_check_chain(rest)
+    elif cmd == "print":
+        return _cmd_print(rest)
     elif cmd == "serve":
         return _cmd_serve(rest)
     else:

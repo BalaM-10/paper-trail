@@ -347,3 +347,105 @@ def test_hook_witness_stop_after_start(tmp_path):
     assert "created" in diff
     assert "deleted" in diff
     assert "modified" in diff
+
+
+# ===========================================================================
+# NO_STATEMENT through the CLI (R2.2)
+# ===========================================================================
+
+from papertrail.session import on_start, on_stop
+
+
+def _touch(root: Path, name: str) -> None:
+    (root / name).write_text("x", encoding="utf-8")
+
+
+def _statement(root: Path, **lists) -> None:
+    body = {
+        "summary": "Made a file.",
+        "files_read": [], "files_created": [], "files_modified": [], "files_deleted": [],
+        **lists,
+    }
+    path = root / ".papertrail" / "statement.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(body), encoding="utf-8")
+
+
+def _silent_session(root: Path, sid: str, *names: str) -> None:
+    on_start({"session_id": sid}, root, Path.home())
+    for name in names:
+        _touch(root, name)
+    on_stop({"session_id": sid}, root, Path.home())
+
+
+def test_verify_a_silent_session_prints_the_changes_and_no_statement(tmp_path):
+    _silent_session(tmp_path, "quiet", "b.txt", "a.txt")
+    before = (tmp_path / ".papertrail" / "ledger.jsonl").read_bytes()
+
+    result = _cli(["verify", "quiet"], tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[0].split() == ["UNDECLARED", "created", "a.txt"]
+    assert lines[1].split() == ["UNDECLARED", "created", "b.txt"]
+    assert lines[-1] == "OVERALL: NO_STATEMENT"
+    assert lines[-2] == ""                      # a blank line before OVERALL, as always
+    # Asking is reading: the record is exactly as it was.
+    assert (tmp_path / ".papertrail" / "ledger.jsonl").read_bytes() == before
+
+
+def test_verify_a_silent_session_by_number_needs_a_statement_file(tmp_path):
+    _silent_session(tmp_path, "quiet", "a.txt")
+    result = _cli(["verify", "quiet", "1"], tmp_path)
+    assert result.returncode == 1
+    assert "no statement found" in (result.stdout + result.stderr).lower()
+
+
+def test_verify_shows_whichever_is_newer_and_a_number_always_means_that_statement(tmp_path):
+    sid = {"session_id": "mixed"}
+    on_start(sid, tmp_path, Path.home())
+    _touch(tmp_path, "a.txt")
+    _statement(tmp_path, files_created=["a.txt"])
+    on_stop(sid, tmp_path, Path.home())          # statement 1
+    _touch(tmp_path, "b.txt")
+    on_stop(sid, tmp_path, Path.home())          # a silent stop, newer than statement 1
+
+    newest = _cli(["verify", "mixed"], tmp_path)
+    assert newest.stdout.splitlines()[-1] == "OVERALL: NO_STATEMENT"
+    assert "b.txt" in newest.stdout and "a.txt" not in newest.stdout
+
+    numbered = _cli(["verify", "mixed", "1"], tmp_path)
+    assert numbered.stdout.splitlines()[-1] == "OVERALL: SUPPORTED"
+
+    _touch(tmp_path, "c.txt")
+    _statement(tmp_path, files_created=["b.txt", "c.txt"])
+    on_stop(sid, tmp_path, Path.home())          # statement 2 is newest again
+    assert _cli(["verify", "mixed"], tmp_path).stdout.splitlines()[-1] == "OVERALL: SUPPORTED"
+
+
+def test_verify_an_unknown_session_is_still_an_error(tmp_path):
+    _silent_session(tmp_path, "quiet", "a.txt")
+    result = _cli(["verify", "somebody-else"], tmp_path)
+    assert result.returncode == 1
+    assert "no statement found" in (result.stdout + result.stderr).lower()
+
+
+def test_verify_refuses_an_unsafe_session_id(tmp_path):
+    result = _cli(["verify", "..\\..\\x"], tmp_path)
+    assert result.returncode == 1
+
+
+def test_a_corrupt_statement_is_reported_not_a_traceback(tmp_path):
+    folder = tmp_path / ".papertrail" / "statements"
+    folder.mkdir(parents=True)
+    (folder / "bad-1.json").write_text("{ nope", encoding="utf-8")
+    result = _cli(["verify", "bad"], tmp_path)
+    assert result.returncode == 1
+    assert "could not parse" in result.stdout.lower()
+    assert "Traceback" not in result.stderr
+
+
+def test_usage_lists_print(tmp_path):
+    result = _cli([], tmp_path)
+    assert result.returncode == 1
+    assert "print" in result.stderr

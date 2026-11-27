@@ -56,9 +56,23 @@ export function overallSentence(verdict: unknown): string {
       return "Overall: the statement matches the evidence.";
     case "CONTRADICTED":
       return "Overall: the statement does not match the evidence.";
+    case "NO_STATEMENT":
+      return "Overall: the agent changed files and said nothing.";
     default:
       return "Overall: some of the statement could not be checked.";
   }
+}
+
+/** The word printed on a stamp. NO_STATEMENT is two words. */
+export function verdictWord(verdict: unknown): string {
+  return String(verdict).replace(/_/g, " ");
+}
+
+/** The fingerprint of the whole record and how many lines it has. */
+export function fingerprintText(entries: { hash: string }[]): string {
+  const n = entries.length;
+  const tip = n > 0 ? entries[n - 1].hash : "none yet";
+  return `Fingerprint of the record: ${tip} (${n} ${n === 1 ? "line" : "lines"})`;
 }
 
 function listOf(value: unknown): string[] {

@@ -3,7 +3,7 @@ import { jumpToLine } from "../lib/jumpToLine";
 
 /**
  * A change the witness saw that the statement never mentioned, circled in red
- * marker. The ring is a loose hand-drawn path whose end overshoots its start.
+ * marker. The ring is a loose hand-drawn rounded loop whose end overshoots its start.
  * Activating it jumps to the witness line that proves it.
  */
 export function UndeclaredCircle({
@@ -28,7 +28,7 @@ export function UndeclaredCircle({
         aria-hidden="true"
         focusable="false"
       >
-        <path d="M 14 9 C 30 2, 70 1, 88 7 C 99 12, 99 28, 86 33 C 68 40, 30 39, 13 32 C 2 27, 1 13, 14 8 C 20 5, 30 3, 40 3" />
+        <path d="M 2 15 C 1.5 8, 3 4, 6 3.5 C 35 1.5, 65 2.5, 93 2.5 C 97 2.5, 98.5 6, 98.5 13 C 99 21, 98.5 29, 98 33 C 97.5 36, 96 37, 93 37 C 65 38, 35 37, 7 37 C 3.5 37, 1.5 34, 1.5 28 C 1.5 22, 1.5 16, 2.5 11 C 3.5 8, 5 5.5, 12 4" />
       </svg>
     </button>
   );

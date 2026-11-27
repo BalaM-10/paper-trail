@@ -8,6 +8,8 @@ export const demoEntries: Entry[] = parseJsonl(demoLedgerRaw);
 
 export const SESSION_A = "demo-session-a";
 export const SESSION_B = "demo-session-b";
+/** The session where the agent changed files and wrote no statement. */
+export const SESSION_C = "demo-session-c";
 
 export function sessionOf(id: string): Entry[] {
   return demoEntries.filter((e) => e.session_id === id);

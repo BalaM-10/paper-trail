@@ -19,6 +19,13 @@ test("UNVERIFIED stamp carries the word and the amber class", () => {
   expect(container.firstChild).toHaveClass("stamp--unverified");
 });
 
+test("NO_STATEMENT stamp prints two words and has its own class", () => {
+  const { container } = render(<Stamp verdict="NO_STATEMENT" />);
+  expect(screen.getByText("NO STATEMENT")).toBeInTheDocument();
+  expect(screen.queryByText("NO_STATEMENT")).toBeNull();
+  expect(container.firstChild).toHaveClass("stamp--no-statement");
+  expect(container.firstChild).not.toHaveClass("stamp--unverified");
+});
 test("is small by default, and can be medium or huge", () => {
   const { container, rerender } = render(<Stamp verdict="SUPPORTED" />);
   expect(container.firstChild).toHaveClass("stamp--small");

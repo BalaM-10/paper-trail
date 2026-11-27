@@ -96,6 +96,11 @@ export function ghostFor(i: GhostInput): { expression: Expression; message: stri
             expression: "alarmed",
             message: "The statement doesn't match what the witness saw. Click the red circle for the proof.",
           };
+        case "NO_STATEMENT":
+          return {
+            expression: "alarmed",
+            message: "The agent changed files and said nothing. Click a red circle to see what the witness saw.",
+          };
         case "UNVERIFIED":
           return {
             expression: "calm",

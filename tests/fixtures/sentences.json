@@ -1,0 +1,51 @@
+{
+  "note": "Written by hand. Python (tests/test_spool.py) and TypeScript (web/src/__tests__/sentences.test.ts) must both print exactly these sentences.",
+  "sentences": [
+    {"name": "witness start", "entry": {"kind": "witness", "data": {"event": "start", "snapshot": {}}}, "text": "Witness took a snapshot of the project."},
+    {"name": "witness stop, created and deleted", "entry": {"kind": "witness", "data": {"event": "stop", "diff": {"created": ["a.md"], "modified": [], "deleted": ["x.txt", "y.bin"]}}}, "text": "Witness compared the project to the earlier snapshot. Created: a.md. Deleted: x.txt, y.bin."},
+    {"name": "witness stop, all three groups", "entry": {"kind": "witness", "data": {"event": "stop", "diff": {"created": ["c.py"], "modified": ["m.py", "n.py"], "deleted": ["d.py"]}}}, "text": "Witness compared the project to the earlier snapshot. Created: c.py. Changed: m.py, n.py. Deleted: d.py."},
+    {"name": "witness stop, nothing changed", "entry": {"kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}}, "text": "Witness compared the project to the earlier snapshot. No changes."},
+    {"name": "witness stop, no diff at all", "entry": {"kind": "witness", "data": {"event": "stop"}}, "text": "Witness compared the project to the earlier snapshot. No changes."},
+
+    {"name": "tool: read a file", "entry": {"kind": "tool", "data": {"tool_name": "read_file", "tool_input": {"path": "src/c.py"}}}, "text": "Agent read src/c.py."},
+    {"name": "tool: write a file", "entry": {"kind": "tool", "data": {"tool_name": "fs_write", "tool_input": {"path": "docs/a.md"}}}, "text": "Agent wrote docs/a.md."},
+    {"name": "tool: edit a file", "entry": {"kind": "tool", "data": {"tool_name": "str_replace", "tool_input": {"path": "src/b.py"}}}, "text": "Agent edited src/b.py."},
+    {"name": "tool: read with no path", "entry": {"kind": "tool", "data": {"tool_name": "read_file", "tool_input": {}}}, "text": "Agent read a file."},
+    {"name": "tool: run a command", "entry": {"kind": "tool", "data": {"tool_name": "execute_pwsh", "tool_input": {"command": "python sample/cleanup.py"}}}, "text": "Agent ran the command: python sample/cleanup.py."},
+    {"name": "tool: a long command is cut at 80 characters", "entry": {"kind": "tool", "data": {"tool_name": "execute_pwsh", "tool_input": {"command": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}}, "text": "Agent ran the command: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."},
+    {"name": "tool: some other tool", "entry": {"kind": "tool", "data": {"tool_name": "web_search", "tool_input": {}}}, "text": "Agent used a tool: web_search."},
+    {"name": "tool: no name", "entry": {"kind": "tool", "data": {"tool_input": {}}}, "text": "Agent used a tool: unknown."},
+
+    {"name": "statement", "entry": {"kind": "statement", "data": {"summary": "Cleared the build cache."}}, "text": "Agent stated: Cleared the build cache."},
+
+    {"name": "verdict: deleted file, supported", "entry": {"kind": "verdict", "data": {"path": "a.txt", "claim": "files_deleted", "verdict": "SUPPORTED", "evidence_seq": [4]}}, "text": "Agent said it deleted a.txt. Witness agrees (line 4)."},
+    {"name": "verdict: created file, supported by two lines", "entry": {"kind": "verdict", "data": {"path": "b.py", "claim": "files_created", "verdict": "SUPPORTED", "evidence_seq": [4, 6]}}, "text": "Agent said it created b.py. Witness agrees (lines 4, 6)."},
+    {"name": "verdict: file read, supported by the record", "entry": {"kind": "verdict", "data": {"path": "src/m.py", "claim": "files_read", "verdict": "SUPPORTED", "evidence_seq": [2, 5]}}, "text": "Agent said it read src/m.py. The record agrees (lines 2, 5)."},
+    {"name": "verdict: supported with no evidence line", "entry": {"kind": "verdict", "data": {"path": "a.txt", "claim": "files_deleted", "verdict": "SUPPORTED", "evidence_seq": []}}, "text": "Agent said it deleted a.txt. Witness agrees."},
+    {"name": "verdict: contradicted", "entry": {"kind": "verdict", "data": {"path": "new.py", "claim": "files_created", "verdict": "CONTRADICTED", "evidence_seq": [4]}}, "text": "Agent said it created new.py. Witness says otherwise (line 4)."},
+    {"name": "verdict: modified file, unverified", "entry": {"kind": "verdict", "data": {"path": "c.py", "claim": "files_modified", "verdict": "UNVERIFIED", "evidence_seq": []}}, "text": "Agent said it changed c.py. There is no evidence either way."},
+    {"name": "verdict: an unknown kind of claim", "entry": {"kind": "verdict", "data": {"path": "p", "claim": "files_weird", "verdict": "UNVERIFIED", "evidence_seq": []}}, "text": "Agent said it touched p. There is no evidence either way."},
+
+    {"name": "overall: supported", "entry": {"kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "SUPPORTED"}}, "text": "Overall: the statement matches the evidence."},
+    {"name": "overall: contradicted", "entry": {"kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "CONTRADICTED"}}, "text": "Overall: the statement does not match the evidence."},
+    {"name": "overall: unverified", "entry": {"kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "UNVERIFIED"}}, "text": "Overall: some of the statement could not be checked."},
+    {"name": "overall: no statement", "entry": {"kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "NO_STATEMENT"}}, "text": "Overall: the agent changed files and said nothing."},
+    {"name": "overall: anything else is not claimed", "entry": {"kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "MAYBE"}}, "text": "Overall: some of the statement could not be checked."},
+
+    {"name": "undeclared change (made up for the screen)", "entry": {"kind": "undeclared", "data": {"path": "sample/notes.txt", "change": "deleted"}}, "text": "Witness saw sample/notes.txt deleted. The agent never mentioned it."},
+    {"name": "error", "entry": {"kind": "error", "data": {"error": "disk full"}}, "text": "Something went wrong: disk full."},
+    {"name": "error with no message", "entry": {"kind": "error", "data": {}}, "text": "Something went wrong: unknown error."},
+    {"name": "a kind nobody knows", "entry": {"kind": "banana", "data": {}}, "text": "Record: banana."}
+  ],
+  "verdictWords": [
+    {"verdict": "SUPPORTED", "word": "SUPPORTED"},
+    {"verdict": "CONTRADICTED", "word": "CONTRADICTED"},
+    {"verdict": "UNVERIFIED", "word": "UNVERIFIED"},
+    {"verdict": "NO_STATEMENT", "word": "NO STATEMENT"}
+  ],
+  "fingerprints": [
+    {"name": "nothing recorded yet", "entries": [], "text": "Fingerprint of the record: none yet (0 lines)"},
+    {"name": "one line", "entries": [{"hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}], "text": "Fingerprint of the record: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef (1 line)"},
+    {"name": "several lines: the last one counts", "entries": [{"hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}, {"hash": "1111111111111111111111111111111111111111111111111111111111111111"}, {"hash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}], "text": "Fingerprint of the record: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210 (3 lines)"}
+  ]
+}

@@ -43,7 +43,11 @@ export function buildSessionMeta(entries: Entry[]): SessionMeta[] {
 
     return {
       sessionId,
-      title: latest ? String(latest.data.summary ?? sessionId.slice(0, 8)) : sessionId.slice(0, 8),
+      title: latest
+        ? String(latest.data.summary ?? sessionId.slice(0, 8))
+        : overalls.length > 0 && overalls[overalls.length - 1].data.verdict === "NO_STATEMENT"
+          ? "No statement written"
+          : sessionId.slice(0, 8),
       date: mine[0].ts.slice(0, 10),
       overallVerdict: overalls.length ? String(overalls[overalls.length - 1].data.verdict) : null,
       hasUnverifiedStatement: latest !== undefined && !latestChecked,

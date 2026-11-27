@@ -22,7 +22,9 @@ from papertrail.mcp_server import (
     handle_list_sessions,
     handle_verify_statement,
 )
-from sample.make_demo_ledger import SESSION_A, SESSION_B, generate
+from papertrail import spool
+from papertrail.mcp_server import handle_print_session
+from sample.make_demo_ledger import SESSION_A, SESSION_B, SESSION_C, generate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -85,6 +87,9 @@ def test_list_sessions_reports_statement_and_verdict(demo_root):
     assert by_id[SESSION_A]["overall_verdict"] == "SUPPORTED"
     assert by_id[SESSION_B]["overall_verdict"] == "CONTRADICTED"
     assert by_id[SESSION_A]["has_statement"] and by_id[SESSION_B]["has_statement"]
+    # The agent that changed files and said nothing: a verdict, but no statement.
+    assert by_id[SESSION_C]["overall_verdict"] == "NO_STATEMENT"
+    assert by_id[SESSION_C]["has_statement"] is False
 
 
 # --- get_entries -----------------------------------------------------------
@@ -212,7 +217,9 @@ def test_stdio_protocol_end_to_end(demo_root):
 
         send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = {t["name"] for t in recv()["result"]["tools"]}
-        assert names == {"list_sessions", "get_entries", "check_chain", "verify_statement"}
+        assert names == {
+            "list_sessions", "get_entries", "check_chain", "verify_statement", "print_session",
+        }
 
         send({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
             "name": "verify_statement",
@@ -221,6 +228,18 @@ def test_stdio_protocol_end_to_end(demo_root):
         assert reply["isError"] is False
         payload = json.loads(reply["content"][0]["text"])
         assert payload["overall"] == "CONTRADICTED"
+
+        # n is optional: with none, the session that said nothing reports NO_STATEMENT.
+        send({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
+            "name": "verify_statement", "arguments": {"session_id": SESSION_C}}})
+        quiet = json.loads(recv()["result"]["content"][0]["text"])
+        assert quiet["overall"] == "NO_STATEMENT"
+
+        send({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {
+            "name": "print_session", "arguments": {"session_id": SESSION_B}}})
+        printed = recv()["result"]
+        assert printed["isError"] is False
+        assert "".join(c["text"] for c in printed["content"]) == handle_print_session(demo_root, SESSION_B)
     finally:
         proc.stdin.close()
         try:
@@ -243,3 +262,48 @@ def test_workspace_mcp_registration():
     assert entry.get("disabled", False) is False
     raw = path.read_text(encoding="utf-8")
     assert ":\\" not in raw and ":/" not in raw and "/Users/" not in raw
+
+
+# --- NO_STATEMENT and print_session (R2.2, R3.2) ----------------------------------
+
+def test_verify_statement_without_a_number_reports_a_silent_session(demo_root):
+    before = _lp(demo_root).read_bytes()
+    result = handle_verify_statement(demo_root, SESSION_C)
+    assert result == {
+        "verdicts": [],
+        "undeclared": [
+            {"path": "sample/src/helpers.py", "change": "created"},
+            {"path": "sample/src/main.py", "change": "modified"},
+        ],
+        "overall": "NO_STATEMENT",
+    }
+    assert _lp(demo_root).read_bytes() == before  # reading wrote nothing
+
+
+def test_verify_statement_with_a_number_still_needs_that_statement(demo_root):
+    assert "error" in handle_verify_statement(demo_root, SESSION_C, 1)
+
+
+def test_verify_statement_without_a_number_checks_the_newest_statement(demo_root):
+    assert handle_verify_statement(demo_root, SESSION_B)["overall"] == "CONTRADICTED"
+    assert handle_verify_statement(demo_root, SESSION_A)["overall"] == "SUPPORTED"
+
+
+def test_print_session_returns_the_text_the_command_would_write(demo_root):
+    text = handle_print_session(demo_root, SESSION_B)
+    assert text == spool.render_session(demo_root, SESSION_B)
+    assert text.splitlines()[-1].endswith("lines)")
+    assert not (demo_root / ".papertrail" / "spool").exists()  # the tool writes nothing
+
+
+def test_print_session_describes_a_silent_session(demo_root):
+    text = handle_print_session(demo_root, SESSION_C)
+    assert "Statement: none written" in text
+    assert "Overall: the agent changed files and said nothing. (NO STATEMENT)" in text.replace("\n      ", " ")
+
+
+@pytest.mark.parametrize("sid", ["nobody", "", "..\\x", "../x", ".hidden", "a..b"])
+def test_print_session_errors_are_one_plain_line(demo_root, sid):
+    text = handle_print_session(demo_root, sid)
+    assert text.startswith("Error: ")
+    assert "\n" not in text.rstrip("\n")

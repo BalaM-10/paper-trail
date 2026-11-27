@@ -1,9 +1,12 @@
+import { verdictWord } from "../lib/entryText";
+
 export type StampSize = "small" | "medium" | "huge";
 
 const VERDICT_CLASS: Record<string, string> = {
   SUPPORTED: "stamp--supported",
   CONTRADICTED: "stamp--contradicted",
   UNVERIFIED: "stamp--unverified",
+  NO_STATEMENT: "stamp--no-statement",
 };
 
 /**
@@ -14,7 +17,7 @@ const VERDICT_CLASS: Record<string, string> = {
 export function Stamp({ verdict, size = "small" }: { verdict: string; size?: StampSize }) {
   return (
     <span className={`stamp ${VERDICT_CLASS[verdict] ?? ""} stamp--${size}`.replace(/\s+/g, " ")}>
-      {verdict}
+      {verdictWord(verdict)}
     </span>
   );
 }

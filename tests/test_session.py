@@ -256,3 +256,188 @@ def test_later_no_statement_stop_does_not_alter_existing_files(tmp_path):
 
     assert promoted.read_text(encoding="utf-8") == original_content
     assert promoted.stat().st_mtime == original_mtime
+
+
+# ===========================================================================
+# NO_STATEMENT: the agent changed files and wrote no statement (R2.1)
+# ===========================================================================
+
+import time
+
+from papertrail.outcome import NO_STATEMENT
+
+
+def _make(root: Path, name: str, text: str = "x") -> None:
+    p = root / name
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+
+
+def _overall(root: Path) -> list[dict]:
+    return [
+        e for e in _entries(root)
+        if e["kind"] == "verdict" and e["data"].get("kind_detail") == "statement_overall"
+    ]
+
+
+def test_ac2_1a_changes_and_no_statement_record_a_verdict_after_the_stop(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "new.txt")
+    stop = on_stop(_base_payload(), tmp_path, Path.home())
+
+    entries = _entries(tmp_path)
+    assert [e["kind"] for e in entries[-2:]] == ["witness", "verdict"]
+    verdict = entries[-1]
+    assert verdict["seq"] == stop["seq"] + 1
+    assert verdict["session_id"] == _SESSION
+    assert verdict["data"] == {
+        "kind_detail": "statement_overall",
+        "verdict": NO_STATEMENT,
+        "evidence_seq": [stop["seq"]],
+        "witness_seq": stop["seq"],
+        "undeclared": [{"path": "new.txt", "change": "created"}],
+    }
+    assert ledger.verify_chain(_lp(tmp_path)) == (True, None)
+
+
+def test_ac2_1a_lists_every_change_created_then_modified_then_deleted(tmp_path):
+    _make(tmp_path, "keep.txt", "old")
+    _make(tmp_path, "gone.txt")
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "keep.txt", "new and different")
+    (tmp_path / "gone.txt").unlink()
+    _make(tmp_path, "fresh.txt")
+    on_stop(_base_payload(), tmp_path, Path.home())
+
+    assert _overall(tmp_path)[-1]["data"]["undeclared"] == [
+        {"path": "fresh.txt", "change": "created"},
+        {"path": "keep.txt", "change": "modified"},
+        {"path": "gone.txt", "change": "deleted"},
+    ]
+
+
+def test_ac2_1b_no_changes_means_no_verdict(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    before = len(_entries(tmp_path))
+    on_stop(_base_payload(), tmp_path, Path.home())
+    assert len(_entries(tmp_path)) == before + 1  # only the witness/stop record
+    assert _overall(tmp_path) == []
+
+
+def test_ac2_1c_a_promoted_statement_means_no_no_statement(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "new.txt")
+    _write_statement(tmp_path, {"files_created": ["new.txt"]})
+    on_stop(_base_payload(), tmp_path, Path.home())
+    assert [e["kind"] for e in _entries(tmp_path)][-2:] == ["witness", "statement"]
+    assert _overall(tmp_path) == []
+
+
+def test_ac2_1d_no_start_snapshot_means_no_baseline_and_no_verdict(tmp_path):
+    _make(tmp_path, "new.txt")
+    stop = on_stop(_base_payload(), tmp_path, Path.home())
+    assert stop["data"]["baseline"] == "none"
+    assert _overall(tmp_path) == []
+
+
+def test_ac2_1e_an_unusable_statement_counts_as_none(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "new.txt")
+    bad = tmp_path / ".papertrail" / "statement.json"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text(json.dumps({"summary": "Only a summary."}), encoding="utf-8")
+
+    stop = on_stop(_base_payload(), tmp_path, Path.home())
+
+    kinds = [e["kind"] for e in _entries(tmp_path)]
+    assert kinds[-3:] == ["witness", "error", "verdict"]       # error first, then the verdict
+    assert (tmp_path / ".papertrail" / "rejected" / f"statement-{stop['seq']}.json").exists()
+    assert not bad.exists()
+    assert _by_kind(tmp_path, "statement") == []
+    assert _overall(tmp_path)[-1]["data"]["verdict"] == NO_STATEMENT
+
+
+def test_ac2_1f_the_same_changes_are_not_recorded_twice_but_new_ones_are(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "a.txt")
+    on_stop(_base_payload(), tmp_path, Path.home())
+    on_stop(_base_payload(), tmp_path, Path.home())   # nothing new happened
+    on_stop(_base_payload(), tmp_path, Path.home())
+    assert len(_overall(tmp_path)) == 1
+
+    _make(tmp_path, "b.txt")                          # something new did
+    on_stop(_base_payload(), tmp_path, Path.home())
+    verdicts = _overall(tmp_path)
+    assert len(verdicts) == 2
+    assert verdicts[1]["data"]["undeclared"] == [
+        {"path": "a.txt", "change": "created"},       # the baseline has not moved on
+        {"path": "b.txt", "change": "created"},
+    ]
+
+
+def test_ac2_1f_another_sessions_verdict_does_not_count_as_a_repeat(tmp_path):
+    on_start(_base_payload("one"), tmp_path, Path.home())
+    on_start(_base_payload("two"), tmp_path, Path.home())
+    _make(tmp_path, "a.txt")
+    on_stop(_base_payload("one"), tmp_path, Path.home())
+    on_stop(_base_payload("two"), tmp_path, Path.home())
+    sessions = [e["session_id"] for e in _overall(tmp_path)]
+    assert sessions == ["one", "two"]
+
+
+def test_ac2_1g_changes_are_measured_from_the_last_promoted_statement(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "a.txt")
+    _write_statement(tmp_path, {"files_created": ["a.txt"]})
+    stop1 = on_stop(_base_payload(), tmp_path, Path.home())
+
+    _make(tmp_path, "b.txt")
+    stop2 = on_stop(_base_payload(), tmp_path, Path.home())
+
+    assert stop2["data"]["baseline"] == f"prev_stop_seq:{stop1['seq']}"
+    assert _overall(tmp_path)[-1]["data"]["undeclared"] == [{"path": "b.txt", "change": "created"}]
+
+
+def test_ac2_1i_the_record_holds_no_contents_and_no_absolute_paths(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    _make(tmp_path, "secret.txt", "TOP-SECRET-CONTENTS-12345")
+    on_stop(_base_payload(), tmp_path, Path.home())
+    raw = _lp(tmp_path).read_text(encoding="utf-8")
+    assert "TOP-SECRET-CONTENTS-12345" not in raw
+    assert str(tmp_path) not in raw and tmp_path.as_posix() not in raw
+    assert "secret.txt" in raw  # the path is there, relative
+
+
+def test_ac2_1h_the_stop_is_still_quick(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    for i in range(20):
+        _make(tmp_path, f"f{i}.txt")
+    started = time.perf_counter()
+    on_stop(_base_payload(), tmp_path, Path.home())
+    assert time.perf_counter() - started < 1.0
+
+
+def test_the_hook_script_records_it_too_and_exits_zero(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    project = Path(__file__).resolve().parents[1]
+    hook = project / ".kiro" / "hooks" / "witness.py"
+    env = {**os.environ, "PAPERTRAIL_ROOT": str(tmp_path)}
+    payload = json.dumps({"session_id": "via-hook"})
+
+    def run(event: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(hook), event], input=payload,
+            capture_output=True, text=True, env=env, cwd=str(project), timeout=30,
+        )
+
+    assert run("start").returncode == 0
+    _make(tmp_path, "made-by-the-agent.txt")
+    assert run("stop").returncode == 0
+
+    last = ledger.read(_lp(tmp_path))[-1]
+    assert last["kind"] == "verdict"
+    assert last["data"]["verdict"] == NO_STATEMENT
+    assert last["data"]["undeclared"] == [{"path": "made-by-the-agent.txt", "change": "created"}]

@@ -12,7 +12,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 async function openAndPrintEverything() {
-  render(<App />);
+  render(<App repoUrl="https://example.org/paper-trail" />);
   await screen.findByRole("button", { name: /Cleared the build cache/ });
   await within(screen.getByRole("status", { name: "Paper status" })).findByText("Paper intact");
   const feed = screen.getByRole("button", { name: "Feed one line" });
