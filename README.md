@@ -160,7 +160,9 @@ Paper Trail was built with Kiro, and it records its own building.
   (init, doctor, pip, the build record), `paper-trail-clean-record` (nothing
   private in the record, statements checked by the stop hook, archive) and
   `paper-trail-turns` (one roll per turn, and changes between turns kept out of
-  the agent's verdict). Each has requirements, a design and tasks.
+  the agent's verdict) and `paper-trail-ignore` (the witness skips what
+  `.gitignore` and a list of common caches skip, long commands print as text,
+  long roll titles are cut to three lines). Each has requirements, a design and tasks.
 - **Hooks** (`.kiro/hooks/`): `record-post-tool-use.json` and
   `record-file-delete.json` write the record; `witness-session-start.json`,
   `witness-turn-start.json` (on `UserPromptSubmit`) and `witness-stop.json` take

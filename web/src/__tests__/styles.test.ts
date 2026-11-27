@@ -483,3 +483,30 @@ describe("the between-turns line", () => {
     expect(valueOf(printCss, ".print-between", "font-style")).toBe("italic");
   });
 });
+/* ---- long roll titles (paper-trail-ignore, R3) --------------------------- */
+
+describe("a long roll title", () => {
+  it("is cut to three lines with an ellipsis, so the roll stays short and the stamp stays in view", () => {
+    expect(valueOf(paperCss, ".spool__title", "-webkit-line-clamp")).toBe("3");
+    expect(valueOf(paperCss, ".spool__title", "line-clamp")).toBe("3");
+    expect(valueOf(paperCss, ".spool__title", "display")).toBe("-webkit-box");
+    expect(valueOf(paperCss, ".spool__title", "-webkit-box-orient")).toBe("vertical");
+    expect(valueOf(paperCss, ".spool__title", "overflow")).toBe("hidden");
+  });
+
+  it("still wraps a word with no spaces, and cannot widen the roll (no sideways scroll at 375 px)", () => {
+    expect(valueOf(paperCss, ".spool__title", "overflow-wrap")).toBe("anywhere");
+    expect(valueOf(paperCss, ".spool__body", "min-width")).toBe("0");
+    expect(valueOf(paperCss, ".spool", "width")).toBe("100%");
+  });
+
+  it("does not put the roll's stamp in a box that scrolls", () => {
+    for (const selector of [".spool", ".spool__body", ".session-list ul", ".session-list"]) {
+      for (const block of blocks(paperCss, selector)) {
+        expect(prop(block, "overflow") ?? "").not.toMatch(/auto|scroll/);
+        expect(prop(block, "overflow-y") ?? "").not.toMatch(/auto|scroll/);
+        expect(prop(block, "max-height")).toBeUndefined();
+      }
+    }
+  });
+});

@@ -50,7 +50,11 @@ export function SessionSpool({ meta, selected, source, onSelect, onVerified }: P
           <span className="spool__core" />
         </span>
         <span className="spool__body">
-          <span className="spool__title">{meta.title}</span>
+          {/* Three lines at most on the roll. The whole title stays in the text (so it is the
+              button's name) and is the tooltip. */}
+          <span className="spool__title" title={meta.title}>
+            {meta.title}
+          </span>
           <span className="spool__meta">
             {meta.sessionId.slice(0, 8)} ·{" "}
             {turnLabel(meta) && (

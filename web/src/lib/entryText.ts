@@ -100,6 +100,23 @@ function listOf(value: unknown): string[] {
   return Array.isArray(value) ? (value as string[]) : [];
 }
 
+/**
+ * The line for a shell command. Twin of command_sentence in papertrail/spool.py;
+ * tests/fixtures/sentences.json holds the cases for both.
+ * The recorder keeps a command of more than 2000 characters only as
+ * { size: bytes, sha256 }, so its text is not in the record and cannot be shown.
+ */
+export function commandSentence(command: unknown): string {
+  if (typeof command === "string" && command) return `Agent ran the command: ${command.slice(0, 80)}.`;
+  if (command !== null && typeof command === "object" && !Array.isArray(command)) {
+    const { size, sha256 } = command as Record<string, unknown>;
+    if (typeof size === "number" && Number.isInteger(size) && size >= 0 && typeof sha256 === "string") {
+      return `Agent ran a long command. The record keeps its size, ${size} ${size === 1 ? "byte" : "bytes"}, not its text.`;
+    }
+  }
+  return "Agent ran a command.";
+}
+
 /** Plain-language description of one record. */
 export function entryText(entry: Entry): string {
   const d = entry.data;
@@ -127,12 +144,13 @@ export function entryText(entry: Entry): string {
 
     case "tool": {
       const name = String(d.tool_name ?? "unknown");
-      const input = (d.tool_input ?? {}) as Record<string, unknown>;
-      if (name === "execute_pwsh") {
-        return `Agent ran the command: ${String(input.command ?? "").slice(0, 80)}.`;
-      }
+      const input =
+        d.tool_input !== null && typeof d.tool_input === "object" && !Array.isArray(d.tool_input)
+          ? (d.tool_input as Record<string, unknown>)
+          : {};
+      if (name === "execute_pwsh") return commandSentence(input.command);
       const verb = TOOL_VERB[name];
-      if (verb) return `Agent ${verb} ${String(input.path ?? "a file")}.`;
+      if (verb) return `Agent ${verb} ${typeof input.path === "string" && input.path ? input.path : "a file"}.`;
       return `Agent used a tool: ${name}.`;
     }
 

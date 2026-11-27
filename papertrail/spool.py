@@ -99,6 +99,27 @@ def between_turns_text(d: dict) -> str:
     return f"Between turns, outside the agent: {listing}."
 
 
+def command_sentence(command) -> str:
+    """
+    The line for a shell command. Twin of commandSentence in web/src/lib/entryText.ts;
+    tests/fixtures/sentences.json holds the cases for both.
+    The recorder keeps a command of more than 2000 characters only as
+    {"size": bytes, "sha256": ...}, so its text is not in the record and cannot be printed.
+    """
+    if isinstance(command, str) and command:
+        return f"Agent ran the command: {command[:80]}."
+    if (
+        isinstance(command, dict)
+        and isinstance(command.get("size"), int)
+        and not isinstance(command.get("size"), bool)
+        and command["size"] >= 0
+        and isinstance(command.get("sha256"), str)
+    ):
+        size = command["size"]
+        return f"Agent ran a long command. The record keeps its size, {size} {'byte' if size == 1 else 'bytes'}, not its text."
+    return "Agent ran a command."
+
+
 def entry_text(entry: dict) -> str:
     """Plain-language description of one record. `kind` may also be "undeclared"."""
     kind = entry["kind"]
@@ -124,12 +145,15 @@ def entry_text(entry: dict) -> str:
 
     if kind == "tool":
         name = str(d.get("tool_name", "unknown"))
-        tool_input = d.get("tool_input") or {}
+        tool_input = d.get("tool_input")
+        if not isinstance(tool_input, dict):
+            tool_input = {}
         if name == "execute_pwsh":
-            return f"Agent ran the command: {str(tool_input.get('command', ''))[:80]}."
+            return command_sentence(tool_input.get("command"))
         verb = TOOL_VERB.get(name)
         if verb:
-            return f"Agent {verb} {tool_input.get('path', 'a file')}."
+            path = tool_input.get("path")
+            return f"Agent {verb} {path if isinstance(path, str) and path else 'a file'}."
         return f"Agent used a tool: {name}."
 
     if kind == "statement":

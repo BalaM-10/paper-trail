@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from papertrail import ledger, verifier, witness
+from papertrail.ignore import RULE_NAME as IGNORE_RULE
 from papertrail import statement as statement_mod
 from papertrail.outcome import NO_STATEMENT, last_overall, undeclared_from_diff
 from papertrail.statement import AGENT_KEYS, parse
@@ -24,7 +25,7 @@ def on_start(payload: dict, root: Path, home: Path) -> dict:
 
     snap = witness.snapshot(root)
     return ledger.append(ledger_path, session_id, "witness",
-                         {"event": "start", "snapshot": snap})
+                         {"event": "start", "snapshot": snap, "ignore": IGNORE_RULE})
 
 
 _SNAPSHOT_EVENTS = ("start", "turn", "stop")
@@ -63,9 +64,11 @@ def on_turn_start(payload: dict, root: Path, home: Path) -> dict:
             and "snapshot" in e["data"]
         ):
             earlier = e
-    turn_entry = ledger.append(ledger_path, session_id, "witness", {"event": "turn", "snapshot": snap})
+    turn_entry = ledger.append(ledger_path, session_id, "witness", {
+        "event": "turn", "snapshot": snap, "ignore": IGNORE_RULE,
+    })
     if earlier is not None:
-        diff = witness.diff(earlier["data"]["snapshot"], snap)
+        diff = witness.diff(witness.without_ignored(earlier["data"]["snapshot"], root), snap)
         if any(diff.values()):
             event = earlier["data"]["event"]
             ledger.append(ledger_path, session_id, "witness", {
@@ -130,7 +133,9 @@ def on_stop(payload: dict, root: Path, home: Path) -> dict:
                 break
     # --- 2. Compute diff ---
     if baseline_snap is not None:
-        diff = witness.diff(baseline_snap, snap_new)
+        # The baseline is read through today's rule too: an older snapshot, or one taken
+        # before .gitignore changed, must not report skipped files as deleted.
+        diff = witness.diff(witness.without_ignored(baseline_snap, root), snap_new)
     else:
         diff = {"created": [], "deleted": [], "modified": []}
 
@@ -142,6 +147,7 @@ def on_stop(payload: dict, root: Path, home: Path) -> dict:
             "snapshot": snap_new,
             "diff":     diff,
             "baseline": baseline_label,
+            "ignore":   IGNORE_RULE,
         },
     )
     witness_seq = stop_entry["seq"]

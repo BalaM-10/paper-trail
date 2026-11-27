@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from papertrail import ledger as ledger_mod
+from papertrail.ignore import RULE_NAME as IGNORE_RULE, Matcher
 from papertrail.witness import EXCLUDE
 
 
@@ -96,6 +97,12 @@ def verify(
         and witness_entry["data"].get("baseline", "none") != "none"
     )
 
+    # A stop record that says it follows the ignore rule never saw the files the rule
+    # skips, so the witness has no evidence about them either way (see ignore.py).
+    matcher: Matcher | None = None
+    if has_diff and witness_entry["data"].get("ignore") == IGNORE_RULE:
+        record_path = ledger_path if ledger_path is not None else _find_ledger_path(ledger_entries)
+        matcher = Matcher.load(record_path.parent.parent)
     if has_diff:
         raw_diff = witness_entry["data"]["diff"]
         norm_created  = {_norm(p) for p in raw_diff.get("created",  [])}
@@ -152,7 +159,7 @@ def verify(
                     "verdict":      "UNVERIFIED",
                     "evidence_seq": [],
                 })
-            elif _in_excluded(path):
+            elif _in_excluded(path) or (matcher is not None and matcher.is_ignored(path)):
                 verdicts.append({
                     "path":         path,
                     "claim":        claim_key,

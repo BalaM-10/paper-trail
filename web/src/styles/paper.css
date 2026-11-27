@@ -230,7 +230,16 @@ select:focus-visible {
 }
 
 .spool__body  { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.spool__title { font-weight: bold; overflow-wrap: anywhere; }
+.spool__title {
+  font-weight: bold;
+  overflow-wrap: anywhere;
+  /* at most three lines, then an ellipsis: the roll stays short, so its stamp stays in view */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
 .spool__meta  { color: var(--muted); font-size: 0.8em; }
 .spool__body .stamp { align-self: flex-start; margin: 0.45rem 0 0.15rem; }
 .spool__error { color: var(--lcd-warn); font-size: 0.85em; }
