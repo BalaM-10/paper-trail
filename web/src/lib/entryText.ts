@@ -81,6 +81,18 @@ export function setupChangedText(d: Record<string, unknown>): string {
 
 export const SETUP_LOUD_START = "RECORDING SETUP CHANGED DURING THIS TURN: ";
 
+/**
+ * True when a roll says the recording setup changed: a loud line for the turn, or a
+ * between-turns line that lists a setup change.
+ */
+export function rollSetupChanged(entries: { kind: string; data: Record<string, unknown> }[]): boolean {
+  return entries.some(
+    (e) =>
+      isSetupChanged(e) ||
+      (e.kind === "witness" && e.data.event === "between_turns" && listOf(e.data.setup_changed).length > 0),
+  );
+}
+
 /** True for the record that says the recording setup changed during a turn. */
 export function isSetupChanged(entry: { kind: string; data: Record<string, unknown> }): boolean {
   return entry.kind === "witness" && entry.data.event === "setup_changed";

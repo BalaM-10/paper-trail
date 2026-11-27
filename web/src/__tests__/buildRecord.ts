@@ -16,6 +16,8 @@ export type SessionSpec = {
   tools: number;
   outcome: Outcome;
   summary?: string;
+  /** "turn": the recording setup changed in the turn. "between": a between-turns line says it changed. */
+  setup?: "turn" | "between";
 };
 
 type Row = { session: string; kind: string; data: Record<string, unknown> };
@@ -32,11 +34,30 @@ function rowsFor(spec: SessionSpec): Row[] {
   }
   const created = outcome === "silent" ? ["src/new.py"] : [];
   const deleted = outcome === "contradicted" ? ["build/a.bin", "notes.txt"] : [];
+  if (spec.setup === "between") {
+    rows.push({
+      session: id,
+      kind: "witness",
+      data: {
+        event: "between_turns",
+        diff: { created: [], modified: [".kiro/hooks/record.py"], deleted: [] },
+        unfinished: false,
+        setup_changed: [".kiro/hooks/record.py"],
+      },
+    });
+  }
   rows.push({
     session: id,
     kind: "witness",
     data: { event: "stop", diff: { created, modified: [], deleted } },
   });
+  if (spec.setup === "turn") {
+    rows.push({
+      session: id,
+      kind: "witness",
+      data: { event: "setup_changed", files: [".kiro/hooks/record.py"] },
+    });
+  }
   return rows;
 }
 

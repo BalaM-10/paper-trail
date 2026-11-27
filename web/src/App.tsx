@@ -22,7 +22,7 @@ import { POLL_MS, useEntries, type View } from "./hooks/useEntries";
 import { useFreshLine } from "./hooks/useFreshLine";
 import { useReplay } from "./hooks/useReplay";
 import type { Entry } from "./lib/chainCheck";
-import { fingerprintText } from "./lib/entryText";
+import { fingerprintText, rollSetupChanged } from "./lib/entryText";
 import { exceptionsOnly } from "./lib/exceptions";
 import { splitRolls, turnLabel } from "./lib/rolls";
 import { synthesiseUndeclared } from "./lib/synthesiseUndeclared";
@@ -212,6 +212,7 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
               tampered={isTampered}
               tamperTarget={tamperTarget}
               overallVerdict={selectedRoll?.overallVerdict ?? null}
+              setupChanged={rollSetupChanged(sessionEntries)}
             />
 
             <Printer

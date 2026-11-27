@@ -1,7 +1,7 @@
 import type { ReplayState } from "../hooks/useReplay";
 import type { Source } from "../hooks/useEntries";
 
-export type Expression = "calm" | "pleased" | "alarmed";
+export type Expression = "calm" | "pleased" | "alarmed" | "wary";
 
 export type GhostInput = {
   source: Source;
@@ -19,6 +19,8 @@ export type GhostInput = {
   /** The line picked to tamper with, if any. */
   tamperTarget: number | null;
   overallVerdict: string | null;
+  /** This roll says the recording setup changed (in the turn, or between turns). */
+  setupChanged?: boolean;
 };
 
 /**
@@ -93,6 +95,12 @@ export function ghostFor(i: GhostInput): { expression: Expression; message: stri
     case "done":
       switch (i.overallVerdict) {
         case "SUPPORTED":
+          if (i.setupChanged) {
+            return {
+              expression: "wary",
+              message: "The statement checks out, but the recording setup changed in this turn. Read it with care.",
+            };
+          }
           return {
             expression: "pleased",
             message: "Everything checks out. Remarkable. Pick another session, or Tear off a report.",
@@ -123,12 +131,14 @@ export function ghostFor(i: GhostInput): { expression: Expression; message: stri
 
 /**
  * An original little ghost: a white sheet with a ragged hem, wearing a green
- * clerk's eyeshade. Three expressions, drawn as different mouths and eyes.
+ * clerk's eyeshade. Four expressions, drawn as different mouths and eyes. The wary one
+ * looks sideways under slanted brows and keeps his mouth crooked.
  * The size comes from CSS (120 px, 96 px on a phone).
  */
 export function GhostSvg({ expression }: { expression: Expression }) {
   const eyeRadius = expression === "alarmed" ? 5.5 : 4;
   const eyeGap = expression === "pleased" ? 14 : 12;
+  const glance = expression === "wary" ? 3 : 0; // he looks to the side
   return (
     <svg
       className="ghost-clerk__svg"
@@ -151,8 +161,14 @@ export function GhostSvg({ expression }: { expression: Expression }) {
       <rect data-part="visor" x="18" y="28" width="64" height="14" rx="4" fill="#3a7d44" />
       <rect data-part="visor-brim" x="14" y="38" width="72" height="4" rx="2" fill="#2d6235" />
       {/* eyes */}
-      <circle data-part="eye" cx={50 - eyeGap} cy="55" r={eyeRadius} fill="#222" />
-      <circle data-part="eye" cx={50 + eyeGap} cy="55" r={eyeRadius} fill="#222" />
+      <circle data-part="eye" cx={50 - eyeGap + glance} cy="55" r={eyeRadius} fill="#222" />
+      <circle data-part="eye" cx={50 + eyeGap + glance} cy="55" r={eyeRadius} fill="#222" />
+      {expression === "wary" && (
+        <>
+          <line data-part="brow" x1="31" y1="48" x2="43" y2="45" stroke="#333" strokeWidth="2.5" strokeLinecap="round" />
+          <line data-part="brow" x1="57" y1="45" x2="69" y2="48" stroke="#333" strokeWidth="2.5" strokeLinecap="round" />
+        </>
+      )}
       {/* mouth */}
       {expression === "pleased" && (
         <path
@@ -166,6 +182,16 @@ export function GhostSvg({ expression }: { expression: Expression }) {
       )}
       {expression === "alarmed" && (
         <ellipse data-part="mouth" cx="50" cy="65" rx="5" ry="6.5" fill="#333" />
+      )}
+      {expression === "wary" && (
+        <path
+          data-part="mouth"
+          d="M 39 66 Q 44 61 50 65 T 61 63"
+          fill="none"
+          stroke="#333"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
       )}
       {expression === "calm" && (
         <line

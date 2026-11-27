@@ -39,6 +39,63 @@ const STATES: [string, Partial<GhostInput>, Expression, RegExp][] = [
   ["torn on disk", { chainOk: false, brokenAt: 7, tampered: false }, "alarmed", /Torn at line 7/],
 ];
 
+const WARY_INPUT: Partial<GhostInput> = { replayState: "done", overallVerdict: "SUPPORTED", setupChanged: true };
+const WARY_MESSAGE = "The statement checks out, but the recording setup changed in this turn. Read it with care.";
+
+describe("when the recording setup changed", () => {
+  it("does not say everything checks out: after the replay it is wary and says why", () => {
+    const said = say(WARY_INPUT);
+    expect(said.expression).toBe("wary");
+    expect(said.message).toBe(WARY_MESSAGE);
+    expect(said.message).not.toMatch(/Everything checks out|Remarkable/);
+  });
+
+  it("is short, plain, and uses no forbidden word", () => {
+    expect(WARY_MESSAGE.length).toBeLessThanOrEqual(96);
+    expect(WARY_MESSAGE).not.toMatch(BANNED);
+  });
+
+  it("keeps the usual calm messages until the replay has ended", () => {
+    for (const replayState of ["idle", "playing", "paused"] as const) {
+      const said = say({ replayState, overallVerdict: "SUPPORTED", setupChanged: true });
+      expect(said.expression).toBe("calm");
+      expect(said.message).not.toMatch(/recording setup/);
+    }
+  });
+
+  it("does not soften a verdict that is already bad", () => {
+    for (const [verdict, expression] of [["CONTRADICTED", "alarmed"], ["NO_STATEMENT", "alarmed"], ["UNVERIFIED", "calm"]] as const) {
+      const said = say({ replayState: "done", overallVerdict: verdict, setupChanged: true });
+      expect(said.expression).toBe(expression);
+      expect(said.message).toBe(say({ replayState: "done", overallVerdict: verdict }).message);
+    }
+  });
+
+  it("changes nothing when the setup did not change", () => {
+    expect(say({ replayState: "done", overallVerdict: "SUPPORTED", setupChanged: false })).toEqual(
+      say({ replayState: "done", overallVerdict: "SUPPORTED" }),
+    );
+    expect(say({ replayState: "done", overallVerdict: "SUPPORTED" }).expression).toBe("pleased");
+  });
+
+  it("a torn paper still outranks it", () => {
+    expect(say({ ...WARY_INPUT, chainOk: false, brokenAt: 4 }).expression).toBe("alarmed");
+  });
+
+  it("draws the wary face: not the smile, with brows, eyes and a crooked mouth", () => {
+    const wary = render(<GhostClerk {...base} {...WARY_INPUT} />).container.querySelector("svg")!;
+    expect(wary).toHaveAttribute("data-expression", "wary");
+    expect(wary.querySelectorAll('[data-part="eye"]')).toHaveLength(2);
+    expect(wary.querySelectorAll('[data-part="brow"]')).toHaveLength(2);
+    expect(wary.querySelectorAll('[data-part="mouth"]')).toHaveLength(1);
+    const mouth = wary.querySelector('[data-part="mouth"]')!.getAttribute("d");
+    const smile = render(<GhostClerk {...base} replayState="done" overallVerdict="SUPPORTED" />).container
+      .querySelector('[data-part="mouth"]')!
+      .getAttribute("d");
+    expect(mouth).not.toBe(smile);
+  });
+});
+
 describe("what the clerk says and how he looks", () => {
   it.each(STATES)("%s", (_name, input, expression, message) => {
     const said = say(input);
@@ -51,9 +108,9 @@ describe("what the clerk says and how he looks", () => {
     expect(said.message).toMatch(/Click RESTORE/);
   });
 
-  it("uses all three expressions", () => {
-    const used = new Set(STATES.map(([, input]) => say(input).expression));
-    expect(used).toEqual(new Set(["calm", "pleased", "alarmed"]));
+  it("uses all four expressions", () => {
+    const used = new Set([...STATES.map(([, input]) => say(input).expression), say(WARY_INPUT).expression]);
+    expect(used).toEqual(new Set(["calm", "pleased", "alarmed", "wary"]));
   });
 });
 
@@ -83,9 +140,11 @@ describe("the drawing", () => {
       ? { replayState: "done", overallVerdict: "SUPPORTED" }
       : expression === "alarmed"
         ? { chainOk: false, brokenAt: 2, tampered: true }
-        : {};
+        : expression === "wary"
+          ? WARY_INPUT
+          : {};
 
-  it.each(["calm", "pleased", "alarmed"] as const)("draws the %s ghost with his eyeshade", (expression) => {
+  it.each(["calm", "pleased", "alarmed", "wary"] as const)("draws the %s ghost with his eyeshade", (expression) => {
     const { container } = render(<GhostClerk {...base} {...inputFor(expression)} />);
     const svg = container.querySelector("svg")!;
     expect(svg).toHaveAttribute("data-expression", expression);
@@ -96,13 +155,13 @@ describe("the drawing", () => {
   });
 
   it("gives each expression a different mouth", () => {
-    const mouths = (["calm", "pleased", "alarmed"] as const).map((expression) => {
+    const mouths = (["calm", "pleased", "alarmed", "wary"] as const).map((expression) => {
       const { container, unmount } = render(<GhostClerk {...base} {...inputFor(expression)} />);
       const mouth = container.querySelector('[data-part="mouth"]')!.outerHTML;
       unmount();
       return mouth;
     });
-    expect(new Set(mouths).size).toBe(3);
+    expect(new Set(mouths).size).toBe(4);
   });
 
   it("puts his bubble first and his figure, with the bobbing wrapper, second", () => {
