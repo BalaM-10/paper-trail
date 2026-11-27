@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Record every file delete",
+      "trigger": "PostFileDelete",
+      "description": "After every file deletion, pipe the session context JSON into record.py to append an evidence log entry.",
+      "action": {
+        "type": "command",
+        "command": "python .kiro/hooks/record.py"
+      }
+    }
+  ]
+}

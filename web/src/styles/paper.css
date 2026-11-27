@@ -134,6 +134,36 @@ select:focus-visible {
 
 /* ---- rolls of paper (the sessions) -------------------------------------- */
 
+/* the switch between records: two keys side by side, the chosen one lit */
+.record-switch { display: flex; margin: 0 0 0.7rem; }
+.record-switch button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.5rem 0.4rem;
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--stage-ink);
+  background: transparent;
+  border: 2px solid var(--stage-muted);
+  cursor: pointer;
+}
+.record-switch button:first-child { border-radius: 0.4rem 0 0 0.4rem; }
+.record-switch button:last-child { border-radius: 0 0.4rem 0.4rem 0; border-left-width: 0; }
+.record-switch button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--band);
+  border-color: var(--band);
+  font-weight: bold;
+}
+.build-totals {
+  margin: 0 0 0.9rem;
+  font-size: 0.82rem;
+  color: var(--stage-muted);
+  overflow-wrap: anywhere;
+}
+
 .session-list__caption {
   margin: 0 0 0.5rem;
   font-size: 0.75rem;

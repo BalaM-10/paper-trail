@@ -6,9 +6,12 @@ type Props = {
   speed: number;
   /** Nothing to replay (no session picked, or it has no lines). */
   disabled: boolean;
+  /** Everything is already printed. */
+  atEnd: boolean;
   onPlay: () => void;
   onPause: () => void;
   onStep: () => void;
+  onSkip: () => void;
   onSpeed: (ms: number) => void;
 };
 
@@ -18,8 +21,8 @@ const SPEED_KEYS: [string, number][] = [
   ["Fast", SPEEDS.fast],
 ];
 
-/** PLAY/PAUSE, FEED (one line) and the three speed keys. */
-export function ReplayControls({ state, speed, disabled, onPlay, onPause, onStep, onSpeed }: Props) {
+/** PLAY/PAUSE, FEED (one line), SKIP TO END and the three speed keys. */
+export function ReplayControls({ state, speed, disabled, atEnd, onPlay, onPause, onStep, onSkip, onSpeed }: Props) {
   return (
     <>
       <div className="key-group replay-controls" role="group" aria-label="Replay controls">
@@ -34,6 +37,9 @@ export function ReplayControls({ state, speed, disabled, onPlay, onPause, onStep
         )}
         <Key onClick={onStep} disabled={disabled} label="Feed one line">
           Feed
+        </Key>
+        <Key onClick={onSkip} disabled={disabled || atEnd} label="Skip to end">
+          Skip to end
         </Key>
       </div>
       <div className="key-group speed-keys" role="group" aria-label="Speed">

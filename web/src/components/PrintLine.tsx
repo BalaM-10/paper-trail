@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import { entryText } from "../lib/entryText";
 import { inkFor } from "../lib/ink";
 import type { DisplayEntry } from "../lib/synthesiseUndeclared";
@@ -34,8 +34,11 @@ function content(entry: DisplayEntry): ReactNode {
   return entryText(entry);
 }
 
-/** One line of the printout. */
-export function PrintLine({ entry, visible, isNext, selected, fresh, onSelect }: Props) {
+/**
+ * One line of the printout. Memoised: with a couple of thousand lines on the
+ * paper, a step or a pick must redraw only the lines whose own props changed.
+ */
+export const PrintLine = memo(function PrintLine({ entry, visible, isNext, selected, fresh, onSelect }: Props) {
   const synthetic = entry._synthetic === true;
   const overall = isOverall(entry);
   const id = synthetic ? undefined : `line-${entry.seq}`;
@@ -95,4 +98,4 @@ export function PrintLine({ entry, visible, isNext, selected, fresh, onSelect }:
       {verdict && <Stamp verdict={verdict} size={overall ? "huge" : "medium"} />}
     </li>
   );
-}
+});

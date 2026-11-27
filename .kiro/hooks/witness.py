@@ -1,12 +1,36 @@
-import sys, json, os
+"""Kiro hook: take a snapshot at session start or stop ("start" or "stop"). Never raises."""
+import json
+import os
+import sys
 from pathlib import Path
 
-_env_root = os.environ.get("PAPERTRAIL_ROOT")
-root = Path(_env_root) if _env_root else Path(__file__).resolve().parents[2]
-_pkg_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_pkg_root))
-from papertrail import ledger
-from papertrail.session import on_start, on_stop
+# <project>/.kiro/hooks/<this file>. Only the standard library is used until the
+# import below, so a project without Paper Trail installed is never disturbed.
+_project = Path(__file__).resolve().parents[2]
+root = Path(os.environ.get("PAPERTRAIL_ROOT") or _project)
+
+
+def _note_and_exit(source: str, exc: BaseException) -> None:
+    """One line in .papertrail/hook-errors.txt (no paths), then exit 0."""
+    try:
+        folder = root / ".papertrail"
+        folder.mkdir(parents=True, exist_ok=True)
+        what = getattr(exc, "name", None) or ""
+        line = f"{source}: cannot import papertrail ({type(exc).__name__}: {what})"
+        with open(folder / "hook-errors.txt", "a", encoding="utf-8", newline="\n") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+    sys.exit(0)
+
+
+if (_project / "papertrail").is_dir():  # this repository: use the folder beside .kiro
+    sys.path.insert(0, str(_project))
+try:
+    from papertrail import ledger
+    from papertrail.session import on_start, on_stop
+except Exception as exc:
+    _note_and_exit("witness.py", exc)
 
 
 def _save_payload(event: str, payload: dict, root: Path) -> None:
@@ -32,5 +56,5 @@ except Exception as exc:
     ledger_path = root / ".papertrail" / "ledger.jsonl"
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     ledger.append(ledger_path, payload.get("session_id", "unknown"),
-                  "error", {"error": str(exc), "source": f"witness.py {sys.argv[1]}"})
+                  "error", {"error": str(exc), "source": f"witness.py {sys.argv[1] if len(sys.argv) > 1 else ''}"})
 sys.exit(0)

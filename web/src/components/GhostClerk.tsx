@@ -44,6 +44,12 @@ export function ghostFor(i: GhostInput): { expression: Expression; message: stri
       message: "The paper jammed and I found no records. Check the demo file, then reload the page.",
     };
   }
+  if (i.source === "build-missing") {
+    return {
+      expression: "calm",
+      message: "The build record isn't published yet. Click Demo to go back.",
+    };
+  }
   if (i.source === "loading") {
     return { expression: "calm", message: "Warming up the printer… nothing to click yet." };
   }

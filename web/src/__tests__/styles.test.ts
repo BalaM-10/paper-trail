@@ -117,6 +117,9 @@ describe("readable contrast (WCAG AA, 4.5:1 for text)", () => {
     ["SUPPORTED stamp on a green bar", stampColour("supported"), v.band],
     ["CONTRADICTED stamp on a green bar", stampColour("contradicted"), v.band],
     ["UNVERIFIED stamp on a green bar", stampColour("unverified"), v.band],
+    ["record switch key on the stage", v["stage-ink"], v["stage-bg"]],
+    ["the chosen record switch key", v.ink, v.band],
+    ["totals under the switch", v["stage-muted"], v["stage-bg"]],
     ["NO STATEMENT stamp on a green bar", stampColour("no-statement"), v.band],
     ["SUPPORTED stamp on paper", stampColour("supported"), v["paper-bg"]],
     ["CONTRADICTED stamp on paper", stampColour("contradicted"), v["paper-bg"]],
@@ -337,7 +340,7 @@ describe("red marker", () => {
     expect(phoneRing).toBeGreaterThan(at(".undeclared-circle__ring path"));
     expect(stampsCss.lastIndexOf("@media (max-width: 640px)")).toBeGreaterThan(at(".undeclared-circle__ring path"));
     const phone = stampsCss.slice(stampsCss.lastIndexOf("@media (max-width: 640px)"));
-    expect(phone).toMatch(/\.undeclared-circle__ring\s*\{\s*top:\s*-1em;\s*left:\s*-1\.3em/);
+    expect(phone).toMatch(/\.undeclared-circle__ring\s*\{\s*top:\s*-0\.8em;\s*left:\s*-1\.3em/);
     // and it still leaves the same room on both sides
     expect(phone).toMatch(/width:\s*calc\(100% \+ 2\.6em\)/);
   });

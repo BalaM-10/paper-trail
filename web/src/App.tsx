@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { BuildTotals } from "./components/BuildTotals";
 import { ChainStatus } from "./components/ChainStatus";
 import { Footer } from "./components/Footer";
 import { GhostClerk } from "./components/GhostClerk";
@@ -9,12 +10,13 @@ import { PaperRoll } from "./components/PaperRoll";
 import { Printer, type Light } from "./components/Printer";
 import { PrintLine } from "./components/PrintLine";
 import { PrintReport } from "./components/PrintReport";
+import { RecordSwitch } from "./components/RecordSwitch";
 import { ReplayControls } from "./components/ReplayControls";
 import { SessionList } from "./components/SessionList";
 import { TamperKeys } from "./components/TamperKeys";
 import { TearOffButton } from "./components/TearOffButton";
 import { useChainCheck } from "./hooks/useChainCheck";
-import { useEntries } from "./hooks/useEntries";
+import { POLL_MS, useEntries, type View } from "./hooks/useEntries";
 import { useFreshLine } from "./hooks/useFreshLine";
 import { useReplay } from "./hooks/useReplay";
 import { fingerprintText } from "./lib/entryText";
@@ -22,7 +24,8 @@ import { buildSessionMeta } from "./lib/sessionMeta";
 import { synthesiseUndeclared } from "./lib/synthesiseUndeclared";
 
 export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {}) {
-  const { entries, source, tamper, restore, isTampered, forceRefresh } = useEntries();
+  const [view, setView] = useState<View>("demo");
+  const { entries, source, tamper, restore, isTampered, forceRefresh } = useEntries(POLL_MS, view);
   const { result: chain, unavailable } = useChainCheck(entries);
   const sessions = useMemo(() => buildSessionMeta(entries), [entries]);
 
@@ -31,7 +34,7 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
 
   // The static demo opens on the interesting session: the one that is CONTRADICTED.
   const demoDefault =
-    source === "demo"
+    source === "demo" || source === "build"
       ? (sessions.find((s) => s.overallVerdict === "CONTRADICTED") ?? sessions[0])?.sessionId ?? null
       : null;
   const selected =
@@ -58,8 +61,15 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
     setTamperTarget(null);
   }
 
-  function toggleTarget(seq: number) {
+  // Stable, so the memoised lines are not redrawn when something else changes.
+  const toggleTarget = useCallback((seq: number) => {
     setTamperTarget((current) => (current === seq ? null : seq));
+  }, []);
+
+  function changeView(next: View) {
+    setView(next);
+    setPicked(null);
+    setTamperTarget(null);
   }
 
   function tamperWithPaper() {
@@ -152,6 +162,12 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
             source={source}
             onSelect={selectSession}
             onVerified={forceRefresh}
+            top={
+              <>
+                <RecordSwitch view={view} onChange={changeView} />
+                {view === "build" && entries.length > 0 && <BuildTotals entries={entries} />}
+              </>
+            }
           />
 
           <main className="stage__main">
@@ -159,6 +175,12 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
               <p className="notice" role="alert">
                 The paper jammed, and I couldn't find any records. Check that the demo file is in
                 place, then reload the page.
+              </p>
+            )}
+            {source === "build-missing" && (
+              <p className="notice">
+                The build record has not been published yet, so there is nothing to show here. Choose
+                Demo to look at the sample sessions.
               </p>
             )}
             {(source === "api" || source === "demo") && entries.length === 0 && (
@@ -172,7 +194,7 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
               source={source}
               hasRecords={entries.length > 0}
               hasSession={selected !== null}
-              preloaded={source === "demo" && picked === null}
+              preloaded={(source === "demo" || source === "build") && picked === null}
               replayState={replay.state}
               chainOk={chain ? chain.ok : true}
               brokenAt={brokenAt}
@@ -197,9 +219,11 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
                 state={replay.state}
                 speed={replay.speed}
                 disabled={lines.length === 0}
+                atEnd={replay.cursor >= lines.length}
                 onPlay={replay.play}
                 onPause={replay.pause}
                 onStep={replay.step}
+                onSkip={replay.skipToEnd}
                 onSpeed={replay.setSpeed}
               />
               <TamperKeys

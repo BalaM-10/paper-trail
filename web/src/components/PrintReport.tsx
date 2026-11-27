@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ChainResult } from "../lib/chainCheck";
 import { entryText, verdictWord } from "../lib/entryText";
 import type { DisplayEntry } from "../lib/synthesiseUndeclared";
@@ -18,7 +19,7 @@ type Props = {
  * It lists everything, whether or not the replay has reached it, and ends
  * with the overall verdict.
  */
-export function PrintReport({ sessionId, title, chain, lines, fingerprint }: Props) {
+export const PrintReport = memo(function PrintReport({ sessionId, title, chain, lines, fingerprint }: Props) {
   const verdictLines = lines.filter(
     (l) => l.kind === "verdict" && l.data.kind_detail !== "statement_overall",
   );
@@ -56,4 +57,4 @@ export function PrintReport({ sessionId, title, chain, lines, fingerprint }: Pro
       <p className="print-fingerprint">{fingerprint}</p>
     </section>
   );
-}
+});

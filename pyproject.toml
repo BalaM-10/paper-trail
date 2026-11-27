@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paper-trail"
+version = "0.1.0"
+description = "An evidence recorder and claim verifier for Kiro agents: did the agent do what it said?"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["mcp>=2,<3"]
+
+[project.optional-dependencies]
+api = ["fastapi", "uvicorn[standard]"]
+dev = ["pytest", "hypothesis", "httpx", "fastapi", "uvicorn[standard]"]
+
+[project.scripts]
+papertrail = "papertrail.__main__:main"
+
+[tool.setuptools]
+packages = ["papertrail"]
+
+[tool.setuptools.package-data]
+papertrail = ["assets/*.json", "assets/hooks/*", "assets/steering/*"]

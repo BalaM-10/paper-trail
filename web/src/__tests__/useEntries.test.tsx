@@ -17,12 +17,14 @@ function fake(body: unknown, status = 200) {
 let ledgerCalls: number;
 let served: Entry[];
 let apiUp: boolean;
+let buildText: string | null;
 
 beforeEach(() => {
   vi.useFakeTimers();
   ledgerCalls = 0;
   served = demoEntries.slice(0, 8);
   apiUp = true;
+  buildText = null;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url === "/api/ledger") {
@@ -31,6 +33,7 @@ beforeEach(() => {
       return fake(served);
     }
     if (url === "./demo/ledger.jsonl") return fake(demoText);
+    if (url === "./demo/build-ledger.jsonl") return buildText === null ? fake("Not found", 404) : fake(buildText);
     throw new TypeError("unexpected " + url);
   });
 });
@@ -143,5 +146,63 @@ describe("live polling", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(result.current.entries).toHaveLength(demoEntries.length);
+  });
+});
+
+
+describe("the build record", () => {
+  it("loads the build file, never calls the API and never polls", async () => {
+    buildText = demoText; // any well-formed record will do here
+    const { result } = renderHook(() => useEntries(2000, "build"));
+    await settle();
+    expect(result.current.source).toBe("build");
+    expect(result.current.entries).toHaveLength(demoEntries.length);
+    expect(ledgerCalls).toBe(0);
+    await settle(20_000);
+    expect(ledgerCalls).toBe(0);
+  });
+
+  it.each([
+    ["a missing file", null],
+    ["a page that is not a record", "<!doctype html><html></html>"],
+    ["an empty file", ""],
+    ["lines that are not records", '{"hello": 1}\n'],
+  ])("reports %s as build-missing, not as an error", async (_name, text) => {
+    buildText = text;
+    const { result } = renderHook(() => useEntries(2000, "build"));
+    await settle();
+    expect(result.current.source).toBe("build-missing");
+    expect(result.current.entries).toHaveLength(0);
+  });
+
+  it("starts again when the view changes: nothing loaded, nothing tampered", async () => {
+    buildText = demoText;
+    const { result, rerender } = renderHook(({ view }) => useEntries(2000, view), {
+      initialProps: { view: "demo" as "demo" | "build" },
+    });
+    await settle();
+    expect(result.current.source).toBe("api");
+    act(() => result.current.tamper(3));
+    expect(result.current.isTampered).toBe(true);
+
+    rerender({ view: "build" });
+    await settle();
+    expect(result.current.source).toBe("build");
+    expect(result.current.isTampered).toBe(false);
+    expect(result.current.entries.some((e) => e.data._tampered)).toBe(false);
+
+    rerender({ view: "demo" });
+    await settle();
+    expect(result.current.source).toBe("api");
+  });
+
+  it("ignores a slow answer for a view that is no longer shown", async () => {
+    buildText = demoText;
+    const { result, rerender } = renderHook(({ view }) => useEntries(2000, view), {
+      initialProps: { view: "build" as "demo" | "build" },
+    });
+    rerender({ view: "demo" }); // before the build file has answered
+    await settle();
+    expect(result.current.source).toBe("api");
   });
 });

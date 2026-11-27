@@ -58,9 +58,15 @@ export function useReplay(total: number, resetKey: string | null, follow: boolea
     setState("playing");
   }, [cursor, total]);
 
+  /** Print every remaining line at once. */
+  const skipToEnd = useCallback(() => {
+    if (total === 0) return;
+    setCursor(total);
+    setState("done");
+  }, [total]);
   const pause = useCallback(() => {
     setState((s) => (s === "playing" ? "paused" : s));
   }, []);
 
-  return { state, cursor, speed, setSpeed, step, play, pause };
+  return { state, cursor, speed, setSpeed, step, play, pause, skipToEnd };
 }

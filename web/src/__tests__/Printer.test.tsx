@@ -69,8 +69,8 @@ describe("Key", () => {
 
 describe("ReplayControls", () => {
   const setup = (over: Partial<Parameters<typeof ReplayControls>[0]> = {}) => {
-    const handlers = { onPlay: vi.fn(), onPause: vi.fn(), onStep: vi.fn(), onSpeed: vi.fn() };
-    render(<ReplayControls state="idle" speed={400} disabled={false} {...handlers} {...over} />);
+    const handlers = { onPlay: vi.fn(), onPause: vi.fn(), onStep: vi.fn(), onSkip: vi.fn(), onSpeed: vi.fn() };
+    render(<ReplayControls state="idle" speed={400} disabled={false} atEnd={false} {...handlers} {...over} />);
     return handlers;
   };
 
@@ -94,6 +94,21 @@ describe("ReplayControls", () => {
     expect(h.onStep).toHaveBeenCalledTimes(1);
   });
 
+  it("SKIP TO END prints the rest", () => {
+    const h = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Skip to end" }));
+    expect(h.onSkip).toHaveBeenCalledTimes(1);
+  });
+  it("SKIP TO END is off when there is nothing to print, or the end is reached", () => {
+    const { unmount } = render(
+      <ReplayControls state="idle" speed={400} disabled atEnd={false} onPlay={vi.fn()} onPause={vi.fn()} onStep={vi.fn()} onSkip={vi.fn()} onSpeed={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: "Skip to end" })).toBeDisabled();
+    unmount();
+    setup({ atEnd: true });
+    expect(screen.getByRole("button", { name: "Skip to end" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Feed one line" })).toBeEnabled();
+  });
   it("holds down the chosen speed key and reports the others", () => {
     const h = setup({ speed: 100 });
     expect(screen.getByRole("button", { name: "Fast" })).toHaveAttribute("aria-pressed", "true");

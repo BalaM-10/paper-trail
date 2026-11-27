@@ -20,7 +20,7 @@ from papertrail import outcome, spool
 
 def _root() -> Path:
     env = os.environ.get("PAPERTRAIL_ROOT")
-    return Path(env) if env else Path(__file__).resolve().parent.parent
+    return Path(env) if env else Path.cwd()  # the project, not the install folder
 
 
 def _ledger_path(root: Path) -> Path:

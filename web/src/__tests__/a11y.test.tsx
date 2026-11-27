@@ -42,7 +42,7 @@ describe("keyboard and screen reader access", () => {
   it("every key's accessible name contains its printed label", async () => {
     await openAndPrintEverything();
     const keys = Array.from(document.querySelectorAll<HTMLButtonElement>(".key"));
-    expect(keys.length).toBe(8); // play, feed, three speeds, tamper, restore, tear off
+    expect(keys.length).toBe(9); // play, feed, skip to end, three speeds, tamper, restore, tear off
     for (const key of keys) {
       const printed = key.textContent!.trim().toLowerCase();
       const name = (key.getAttribute("aria-label") ?? key.textContent!).toLowerCase();
@@ -55,6 +55,7 @@ describe("keyboard and screen reader access", () => {
     for (const name of [
       "Play",
       "Feed one line",
+      "Skip to end",
       "Slow",
       "Normal",
       "Fast",

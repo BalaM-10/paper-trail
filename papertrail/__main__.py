@@ -5,14 +5,14 @@ import sys
 from pathlib import Path
 
 from papertrail import ledger as ledger_mod
-from papertrail import outcome, spool
+from papertrail import install, outcome, spool
 
 
 def _get_root() -> Path:
     env = os.environ.get("PAPERTRAIL_ROOT")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[1]
+    return Path.cwd()  # the project; not the folder the package is installed in
 
 
 def _cmd_verify(args: list[str]) -> int:
@@ -118,6 +118,53 @@ def _cmd_print(args: list[str]) -> int:
     return 0
 
 
+def _cmd_init(args: list[str]) -> int:
+    """Set up Paper Trail in another Kiro project."""
+    force = "--force" in args
+    folders = [a for a in args if a != "--force"]
+    if len(folders) != 1:
+        print("Usage: python -m papertrail init <project_folder> [--force]", file=sys.stderr)
+        return 1
+    folder = Path(folders[0])
+    try:
+        steps = install.init(folder, force=force)
+    except NotADirectoryError:
+        print(f"Error: {folder} is not a folder. Nothing was changed.", file=sys.stderr)
+        return 1
+    for step in steps:
+        print(install.describe(step))
+    print()
+    if install.succeeded(steps):
+        print(f"Paper Trail is set up in {folder}.")
+        print(f"Next: run  python -m papertrail doctor {folder}  to check the setup.")
+        return 0
+    print("Some files were left alone or could not be set up. See the lines above.")
+    return 1
+
+
+def _cmd_doctor(args: list[str]) -> int:
+    """Say what is missing from an installed project."""
+    if len(args) > 1:
+        print("Usage: python -m papertrail doctor [project_folder]", file=sys.stderr)
+        return 1
+    folder = Path(args[0]) if args else Path.cwd()
+    try:
+        checks = install.doctor(folder)
+    except NotADirectoryError:
+        print(f"Error: {folder} is not a folder.", file=sys.stderr)
+        return 1
+    for check in checks:
+        for line in install.describe_check(check):
+            print(line)
+    print()
+    missing = sum(1 for c in checks if c.level == "missing")
+    if missing:
+        print(f"{missing} {'thing is' if missing == 1 else 'things are'} missing. Paper Trail will not record properly until that is fixed.")
+        return 1
+    print("Everything Paper Trail needs is in place.")
+    return 0
+
+
 DEFAULT_PORT = 8765
 
 
@@ -145,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
 
     if not argv:
-        print("Usage: python -m papertrail <verify|check-chain|print|serve> [args]", file=sys.stderr)
+        print("Usage: python -m papertrail <verify|check-chain|print|init|doctor|serve> [args]", file=sys.stderr)
         return 1
 
     cmd, *rest = argv
@@ -155,6 +202,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_check_chain(rest)
     elif cmd == "print":
         return _cmd_print(rest)
+    elif cmd == "init":
+        return _cmd_init(rest)
+    elif cmd == "doctor":
+        return _cmd_doctor(rest)
     elif cmd == "serve":
         return _cmd_serve(rest)
     else:

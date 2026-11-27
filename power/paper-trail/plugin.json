@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "paper-trail",
+  "version": "0.1.0",
+  "description": "Check what a Kiro agent really did against what it said it did: read the record, verify a statement, print a session.",
+  "author": {
+    "name": "Paper Trail"
+  },
+  "keywords": ["paper trail", "evidence", "audit", "verify", "agent statement", "witness", "did the agent do what it said"],
+  "license": "MIT"
+}

@@ -135,3 +135,35 @@ describe("new lines arriving live", () => {
   });
 });
 
+
+describe("skip to end", () => {
+  it("prints everything at once and finishes", () => {
+    const { result } = setup({ total: 2000, key: "a", follow: false });
+    act(() => result.current.step());
+    act(() => result.current.skipToEnd());
+    expect([result.current.state, result.current.cursor]).toEqual(["done", 2000]);
+  });
+
+  it("works while playing, and stops the playing", async () => {
+    const { result } = setup({ total: 50, key: "a", follow: false });
+    act(() => result.current.play());
+    await tick(SPEEDS.normal);
+    act(() => result.current.skipToEnd());
+    expect([result.current.state, result.current.cursor]).toEqual(["done", 50]);
+    await ticks(3, SPEEDS.normal);
+    expect(result.current.cursor).toBe(50);
+  });
+
+  it("does nothing when there is nothing to print", () => {
+    const { result } = setup({ total: 0, key: "a", follow: false });
+    act(() => result.current.skipToEnd());
+    expect([result.current.state, result.current.cursor]).toEqual(["idle", 0]);
+  });
+
+  it("lets PLAY start again from the top, as it does at the end of a replay", () => {
+    const { result } = setup({ total: 5, key: "a", follow: false });
+    act(() => result.current.skipToEnd());
+    act(() => result.current.play());
+    expect([result.current.state, result.current.cursor]).toEqual(["playing", 0]);
+  });
+});
