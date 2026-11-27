@@ -1,0 +1,681 @@
+/*
+  A night-time stage with a printer on it. The paper feeds out of the printer
+  and runs down the page. Every colour that carries text is a six-digit hex
+  variable here so styles.test.ts can check its contrast.
+*/
+
+:root {
+  /* the stage */
+  --stage-bg: #0b0f17;
+  --stage-ink: #f1ede2;
+  --stage-muted: #b9c0cc;
+  --link-on-dark: #9ec5ff;
+
+  /* the paper */
+  --paper-bg: #f8f6ef;
+  --band: #d9f0d0;
+  --band-h: 1.7rem;
+  --ink: #1f2a1f;
+  --muted: #4a4a4a;
+  --green: #1d5f2b;
+  --red: #8b1a1a;
+  --hole-ring: #8a8a8a;
+
+  /* the printer */
+  --panel-bg: #272b30;
+  --panel-ink: #e6e2d6;
+  --key-face: #dcd6c4;
+  --key-edge: #8d8672;
+  --key-ink: #1d1d1b;
+  --key-red: #a3201f;
+  --key-red-edge: #5e1111;
+  --key-on: #22301f;
+  --key-on-ink: #e8f5df;
+  --lcd-bg: #16241a;
+  --lcd-ink: #b8f5b0;
+  --lcd-warn: #ff9e94;
+  --bubble-bg: #f8f6ef;
+
+  /* focus rings: yellow on the dark stage and printer, blue on the paper */
+  --focus: #ffd54a;
+  --focus-paper: #0b4fb3;
+
+  --font: "Courier New", Courier, monospace;
+  --font-print: "Doto", "Courier New", Courier, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--stage-ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+  background-color: var(--stage-bg);
+  background-image:
+    radial-gradient(circle at 8% 12%, rgba(255, 255, 255, 0.7) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 23% 6%, rgba(255, 255, 255, 0.5) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 41% 15%, rgba(255, 255, 255, 0.6) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 63% 8%, rgba(255, 255, 255, 0.7) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 78% 19%, rgba(255, 255, 255, 0.5) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 92% 5%, rgba(255, 255, 255, 0.6) 0 1px, transparent 1.6px),
+    radial-gradient(ellipse at 50% -10%, #1c2a44 0%, rgba(28, 42, 68, 0) 62%);
+  background-attachment: fixed;
+}
+
+svg, img { max-width: 100%; }
+
+.app {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1rem 0.9rem 3rem;
+}
+
+/* ---- the stage grid ----------------------------------------------------- */
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem 1.5rem;
+}
+
+.stage__main { min-width: 0; display: flex; flex-direction: column; }
+
+@media (min-width: 900px) {
+  .stage {
+    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-areas:
+      "head head"
+      "rolls main"
+      "foot foot";
+  }
+  .page-header  { grid-area: head; }
+  .session-list { grid-area: rolls; align-self: start; position: sticky; top: 1rem; }
+  .stage__main  { grid-area: main; }
+  .page-footer  { grid-area: foot; }
+}
+
+/* ---- heading ------------------------------------------------------------ */
+
+.product-name {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--stage-muted);
+}
+.page-header h1 {
+  margin: 0.1rem 0 0.4rem;
+  font-size: clamp(1.45rem, 5vw, 2.1rem);
+  line-height: 1.15;
+  color: var(--stage-ink);
+}
+.page-header__lede { margin: 0; max-width: 62ch; color: var(--stage-muted); }
+
+.notice {
+  margin: 0 0 0.8rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--paper-bg);
+  color: var(--ink);
+  border: 2px solid var(--red);
+  border-radius: 0.4rem;
+}
+
+/* ---- focus -------------------------------------------------------------- */
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.paper-roll button:focus-visible { outline-color: var(--focus-paper); }
+
+/* ---- rolls of paper (the sessions) -------------------------------------- */
+
+.session-list__caption {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--stage-muted);
+}
+
+.session-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+@media (min-width: 900px) {
+  .session-list ul { grid-template-columns: minmax(0, 1fr); }
+}
+
+.spool-item { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
+
+.spool {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 4.4rem;
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-bg);
+  border: 2px solid #6b6b6b;
+  border-radius: 0.6rem;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+.spool[aria-pressed="true"] {
+  border-color: #7ddc8c;
+  box-shadow: 0 0 0 3px rgba(125, 220, 140, 0.55), 0 3px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* a roll seen end-on: layers of paper round a cardboard core */
+.spool__roll {
+  position: relative;
+  flex: none;
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle at 50% 50%, #f4f1e6 0 2px, #cdc7b2 2px 3px);
+  box-shadow: inset 0 0 0 2px #b3ac93, 0 3px 4px rgba(0, 0, 0, 0.45);
+}
+.spool__core {
+  position: absolute;
+  inset: 34%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #14161a 0 30%, #9a7a4a 32% 100%);
+  box-shadow: inset 0 0 0 2px #6d5230;
+}
+
+.spool__body  { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.spool__title { font-weight: bold; overflow-wrap: anywhere; }
+.spool__meta  { color: var(--muted); font-size: 0.8em; }
+.spool__body .stamp { align-self: flex-start; margin: 0.45rem 0 0.15rem; }
+.spool__error { color: var(--lcd-warn); font-size: 0.85em; }
+
+.btn {
+  font: inherit;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.9rem;
+  color: var(--key-ink);
+  background: linear-gradient(#eee9da, var(--key-face));
+  border: 1px solid var(--key-edge);
+  border-bottom-width: 3px;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn--small { min-height: 2.2rem; font-size: 0.85em; }
+
+/* ---- the printer -------------------------------------------------------- */
+
+.printer {
+  position: relative;
+  z-index: 3;
+  padding: 0 0.9rem 1.5rem;
+  border: 1px solid #6a6555;
+  border-radius: 18px 18px 8px 8px;
+  background: linear-gradient(#ddd6c3, #c4bda9 55%, #b3ac98);
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.65),
+    inset 0 2px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+}
+
+.printer__lid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 2.3rem;
+  margin: 0 -0.9rem 0.8rem;
+  padding: 0 1.1rem;
+  border-bottom: 2px solid #9d977f;
+  border-radius: 17px 17px 0 0;
+  background: linear-gradient(#f0eadb, #d3ccb8);
+}
+.printer__vents {
+  flex: 1;
+  max-width: 12rem;
+  height: 0.9rem;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #5c5748 0 3px, transparent 3px 8px);
+  opacity: 0.55;
+}
+.printer__brand {
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  color: #3b372c;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.printer__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.85rem;
+  color: var(--panel-ink);
+  background: var(--panel-bg);
+  border-radius: 10px;
+  box-shadow: inset 0 3px 9px rgba(0, 0, 0, 0.75), 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.printer__readout { display: flex; align-items: center; gap: 0.75rem; }
+
+.led {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: #3b3f45;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5);
+}
+.led--ready { background: #4cd964; box-shadow: 0 0 9px 2px rgba(76, 217, 100, 0.55); }
+.led--busy  { background: #ffb020; box-shadow: 0 0 9px 2px rgba(255, 176, 32, 0.6); }
+.led--error { background: #ff453a; box-shadow: 0 0 11px 3px rgba(255, 69, 58, 0.65); }
+@media (prefers-reduced-motion: no-preference) {
+  .led--busy { animation: led-pulse 0.9s ease-in-out infinite; }
+}
+@keyframes led-pulse { 50% { opacity: 0.45; } }
+
+.lcd {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 1.1rem;
+  padding: 0.45rem 0.75rem;
+  color: var(--lcd-ink);
+  background: var(--lcd-bg);
+  border-radius: 6px;
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.85);
+  font-size: 0.95rem;
+}
+.lcd__state { font-weight: bold; letter-spacing: 0.14em; text-transform: uppercase; }
+.printer[data-light="error"] .lcd__state { color: var(--lcd-warn); }
+.lcd__status { display: flex; align-items: center; gap: 0.6rem; }
+.chain-status { font-weight: bold; }
+.lcd .chain-status--broken,
+.lcd .chain-status--unknown { color: var(--lcd-warn); }
+
+.live-indicator {
+  padding: 0.05rem 0.5rem;
+  color: #fff;
+  background: #b3261e;
+  border-radius: 0.25rem;
+  font-size: 0.8em;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-indicator { animation: live-pulse 1.8s ease-in-out infinite; }
+}
+@keyframes live-pulse { 50% { opacity: 0.55; } }
+
+.printer__keys { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.8rem 1.4rem; }
+.key-group { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.speed-keys::before {
+  content: "Speed";
+  align-self: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* a chunky key: it goes down when pressed */
+.key {
+  min-width: 3.6rem;
+  min-height: 2.9rem;
+  padding: 0.4rem 0.95rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--key-ink);
+  background: linear-gradient(#f0ebdc, var(--key-face));
+  border: 1px solid var(--key-edge);
+  border-bottom-width: 4px;
+  border-radius: 0.5rem;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+.key:hover:not(:disabled) { background: linear-gradient(#f8f4e8, #e8e2d1); }
+.key:active:not(:disabled),
+.key[aria-pressed="true"] {
+  transform: translateY(3px);
+  border-bottom-width: 1px;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.6), inset 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+.key[aria-pressed="true"] {
+  color: var(--key-on-ink);
+  background: var(--key-on);
+  border-color: #0d140c;
+}
+.key--red {
+  color: #fff;
+  background: linear-gradient(#c43b39, var(--key-red));
+  border-color: var(--key-red-edge);
+}
+.key--red:hover:not(:disabled) { background: linear-gradient(#d34745, #b02b29); }
+.key--wide { padding-inline: 1.2rem; }
+.key:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* the slot the paper comes out of */
+.printer__slot {
+  position: absolute;
+  left: 1.4rem;
+  right: 1.4rem;
+  bottom: -3px;
+  height: 12px;
+  border-radius: 0 0 8px 8px;
+  background: #05070a;
+  box-shadow: inset 0 -3px 5px rgba(0, 0, 0, 0.9), 0 2px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ---- the clerk, sitting on the printer's corner ------------------------- */
+
+.ghost-clerk {
+  position: relative;
+  z-index: 4;
+  align-self: flex-end;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: 100%;
+  margin: 0 1.2rem -0.8rem 0;
+}
+
+.ghost-clerk__message {
+  position: relative;
+  margin: 0 0 1.8rem;
+  max-width: 23rem;
+  padding: 0.55rem 0.85rem;
+  color: var(--ink);
+  background: var(--bubble-bg);
+  border-radius: 0.7rem;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.55);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.ghost-clerk__message::after {
+  content: "";
+  position: absolute;
+  right: -0.45rem;
+  bottom: 0.8rem;
+  border: 0.5rem solid transparent;
+  border-right-width: 0;
+  border-left-color: var(--bubble-bg);
+}
+
+.ghost-clerk__figure { flex: none; }
+.ghost-clerk__svg {
+  display: block;
+  width: 120px;
+  height: 120px;
+  overflow: visible;
+  transform-origin: 50% 90%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ghost-clerk__bob { animation: ghost-bob 3.2s ease-in-out infinite; }
+  .ghost-clerk__svg[data-expression="alarmed"] {
+    animation: ghost-jump 0.7s cubic-bezier(0.3, 1.5, 0.5, 1) 1;
+  }
+}
+@keyframes ghost-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+@keyframes ghost-jump {
+  0%   { transform: translateY(0) scale(1, 1); }
+  18%  { transform: translateY(0) scale(1.08, 0.9); }
+  50%  { transform: translateY(-30px) scale(0.96, 1.06); }
+  78%  { transform: translateY(0) scale(1.06, 0.92); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+/* ---- the paper ---------------------------------------------------------- */
+
+.paper-roll {
+  --gutter: 44px; /* room for the feed holes */
+  position: relative;
+  z-index: 1;
+  margin: -6px 1.6rem 1.2rem; /* tucked under the printer's lip, like it came from the slot */
+  /* A rotated piece or a stamp being pressed must not widen the page. Only the
+     sideways axis is clipped: `hidden` would also clip downwards and add a
+     scroll bar when the torn piece swings out. */
+  overflow-x: clip;
+}
+
+.paper-piece { position: relative; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5)); }
+
+.paper-piece__sheet {
+  position: relative;
+  padding: 0 var(--gutter);
+  background-color: var(--paper-bg);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--paper-bg) 0,
+    var(--paper-bg) var(--band-h),
+    var(--band) var(--band-h),
+    var(--band) calc(var(--band-h) * 2)
+  );
+}
+
+/* whole paper: long enough to fill most of the screen */
+.paper-roll--whole .paper-piece__sheet { min-height: 62vh; }
+
+.tractor-holes {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 32px;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at center,
+    var(--stage-bg) 0 6px,
+    var(--hole-ring) 6.5px 7.5px,
+    transparent 8px
+  );
+  background-size: 32px 38px;
+  background-repeat: repeat-y;
+  background-position: center 10px;
+}
+.tractor-holes--left  { left: 4px; }
+.tractor-holes--right { right: 4px; }
+
+.session-break {
+  height: var(--band-h);
+  margin: 0 calc(var(--gutter) * -1); /* edge to edge, over the side gutters */
+  padding: 0 var(--gutter);
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  line-height: var(--band-h);
+  color: var(--muted);
+  font-size: 0.8em;
+  border-top: 2px dashed #8f8f8f;
+  background: var(--paper-bg);
+}
+
+/* ---- the tear: two pieces, a gap, jagged edges --------------------------- */
+
+.paper-gap { height: 30px; }
+
+.paper-roll--torn .paper-piece--upper .paper-piece__sheet {
+  padding-bottom: 10px;
+  clip-path: polygon(
+    0 0, 100% 0, 100% calc(100% - 7px), 96% calc(100% - 2px), 92% calc(100% - 9px),
+    88% calc(100% - 3px), 83% calc(100% - 8px), 79% calc(100% - 2px), 74% calc(100% - 9px),
+    69% calc(100% - 3px), 64% calc(100% - 7px), 60% calc(100% - 1px), 55% calc(100% - 9px),
+    50% calc(100% - 3px), 46% calc(100% - 8px), 41% calc(100% - 2px), 36% calc(100% - 9px),
+    31% calc(100% - 3px), 27% calc(100% - 7px), 22% calc(100% - 1px), 17% calc(100% - 8px),
+    13% calc(100% - 3px), 8% calc(100% - 9px), 4% calc(100% - 2px), 0 calc(100% - 8px)
+  );
+}
+
+/* The shadow is on the outer element and the clip on the inner one: a filter
+   is applied before clip-path, so on one element the clip would cut the shadow. */
+.paper-piece--lower {
+  transform: translate(8px, 4px) rotate(1.2deg);
+  transform-origin: 0 0;
+  filter: drop-shadow(0 10px 9px rgba(0, 0, 0, 0.7));
+}
+.paper-piece--lower .paper-piece__sheet {
+  min-height: 56vh; /* a torn page is still a long page */
+  padding-top: 10px;
+  background-position: 0 10px; /* keep the lines on the bars below the ragged edge */
+  clip-path: polygon(
+    0 8px, 4% 2px, 8% 9px, 13% 3px, 17% 8px, 22% 1px, 27% 7px, 31% 3px, 36% 9px,
+    41% 2px, 46% 8px, 50% 3px, 55% 9px, 60% 1px, 64% 7px, 69% 3px, 74% 9px,
+    79% 2px, 83% 8px, 88% 3px, 92% 9px, 96% 2px, 100% 7px, 100% 100%, 0 100%
+  );
+}
+
+/* ---- printed lines ------------------------------------------------------ */
+
+.print-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-print);
+  font-weight: 900;
+}
+
+.print-line {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  min-height: var(--band-h);
+  line-height: var(--band-h);
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.print-line:focus { outline: 2px dashed var(--red); outline-offset: -2px; }
+
+.print-line__no {
+  flex: none;
+  width: 3.4rem;
+  padding: 0 0.6rem 0 0;
+  text-align: right;
+  font: inherit;
+  line-height: inherit;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.print-line--pending .print-line__no { cursor: default; }
+.print-line--next .print-line__no::before { content: "\25B8"; color: var(--green); }
+.print-line__no--note { color: var(--red); cursor: default; }
+
+.print-line__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  opacity: var(--density, 1); /* each line is a little lighter or darker */
+  text-shadow: 0 0 1px rgba(31, 42, 31, 0.45);
+}
+.print-line--stamped .print-line__text { padding-right: 9.8rem; }
+.print-line--tamper-target { background: rgba(255, 221, 0, 0.45); }
+.print-line--empty { color: var(--muted); }
+
+/* the overall verdict: a tall line with room for the huge stamp */
+.print-line--overall { min-height: 6.6rem; }
+.print-line--overall .print-line__text { padding-right: 17.5rem; font-size: 1.05rem; }
+
+/* the print head sweeping across the line that has just printed */
+@media (prefers-reduced-motion: no-preference) {
+  .print-line--fresh .print-line__text { animation: ink-reveal 0.4s linear both; }
+  .print-line--fresh::before {
+    content: "";
+    position: absolute;
+    top: 14%;
+    bottom: 14%;
+    left: 3.4rem;
+    z-index: 2;
+    width: 0.7rem;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, #20232a 40%, #20232a 60%, transparent);
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    animation: head-sweep 0.4s linear forwards;
+  }
+}
+@keyframes ink-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+@keyframes head-sweep {
+  0%   { left: 3.4rem; opacity: 1; }
+  92%  { opacity: 1; }
+  100% { left: calc(100% - 1rem); opacity: 0; }
+}
+
+/* the marker arrow in the margin, from the line up to the witness line */
+.marker-arrow {
+  position: absolute;
+  left: 0.1rem;
+  bottom: 50%;
+  z-index: 3;
+  width: 24px;
+  pointer-events: none;
+}
+.marker-arrow svg { display: block; overflow: visible; stroke: #c0262d; filter: url(#marker-ink); }
+
+/* ---- footer ------------------------------------------------------------- */
+
+.page-footer { text-align: center; padding: 0.5rem 0 1rem; }
+.page-footer a { color: var(--link-on-dark); }
+
+/* ---- phones ------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .app { padding: 0.6rem 0.5rem 2.5rem; }
+  .stage { gap: 0.8rem; }
+
+  .printer { padding: 0 0.6rem 1.2rem; }
+  .printer__lid { margin: 0 -0.6rem 0.6rem; padding: 0 0.8rem; }
+  .printer__panel { padding: 0.65rem; }
+  .printer__keys { gap: 0.7rem 0.9rem; }
+  .key { min-width: 3.2rem; padding-inline: 0.7rem; }
+  .printer__slot { left: 0.9rem; right: 0.9rem; }
+
+  .ghost-clerk { align-self: stretch; justify-content: flex-end; margin-right: 0.5rem; }
+  .ghost-clerk__message { flex: 1; max-width: none; margin-bottom: 1.3rem; font-size: 0.8rem; }
+  .ghost-clerk__svg { width: 96px; height: 96px; }
+
+  .paper-roll { --gutter: 0.4rem; margin-inline: 0.5rem; }
+  .paper-roll--whole .paper-piece__sheet { min-height: 56vh; }
+  .tractor-holes { display: none; }
+  .session-break span { letter-spacing: -0.05em; }
+
+  .print-line { font-size: 0.88rem; flex-wrap: wrap; }
+  .print-line__no { width: 2.6rem; }
+  .print-line__text { flex: 1 1 calc(100% - 2.6rem); }
+  /* a stamp goes under its text instead of over it, so the words stay readable */
+  .print-line--stamped .print-line__text,
+  .print-line--overall .print-line__text { padding-right: 0; }
+  .print-line--overall { min-height: 0; }
+}
+
+/* ---- reduced motion: nothing moves -------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

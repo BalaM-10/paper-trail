@@ -1,0 +1,115 @@
+/*
+  Rubber stamps and the red marker.
+  A stamp is pressed over its line: double-ruled, tilted, ink that lets the
+  paper show through, and rough edges from the shared SVG filter (InkFilters).
+  The text always carries the verdict; colour is a bonus.
+*/
+
+.stamp {
+  --tilt: -2deg;
+  --ty: 0px;
+  display: inline-block;
+  box-sizing: border-box;
+  font-family: "Courier New", Courier, monospace;
+  font-weight: bold;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 5px double currentColor;
+  border-radius: 4px;
+  padding: 0 0.45em;
+  opacity: 0.92;
+  mix-blend-mode: multiply; /* the ink soaks into the paper; the words beneath show through */
+  filter: url(#rough-ink);
+  transform: translateY(var(--ty)) rotate(var(--tilt));
+}
+
+.stamp--supported    { color: #2d6a2d; }
+.stamp--contradicted { color: #8b1a1a; }
+.stamp--unverified   { color: #7a5c00; }
+
+/* three sizes: a roll's label, a verdict line, and the overall verdict */
+.stamp--small  { font-size: 0.8rem;  --tilt: -2deg; }
+.stamp--medium { font-size: 0.95rem; --tilt: -4deg; }
+.stamp--huge   { font-size: 2.1rem;  --tilt: -9deg; border-width: 8px; padding: 0.05em 0.4em; }
+
+/* on the paper, a stamp is pressed over the right-hand end of its line */
+.print-line .stamp {
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  --ty: -50%;
+  z-index: 2;
+}
+
+/* the thump: lands just after the print head has passed */
+@media (prefers-reduced-motion: no-preference) {
+  .print-line--fresh .stamp { animation: stamp-thump 0.35s ease-out 0.4s backwards; }
+}
+@keyframes stamp-thump {
+  0%   { transform: translateY(var(--ty)) rotate(var(--tilt)) scale(1.9); opacity: 0; }
+  55%  { transform: translateY(var(--ty)) rotate(var(--tilt)) scale(0.92); opacity: 1; }
+  78%  { transform: translateY(var(--ty)) rotate(var(--tilt)) scale(1.05); }
+  100% { transform: translateY(var(--ty)) rotate(var(--tilt)) scale(1); opacity: 0.92; }
+}
+
+/* phones: the stamp sits under its text, in the flow, still tilted and inky */
+@media (max-width: 640px) {
+  .print-line .stamp {
+    position: static;
+    --ty: 0px;
+    flex: none;
+    margin: -0.2rem 0.6rem 0.3rem auto;
+  }
+  .print-line .stamp { margin-top: 0.35rem; } /* clear of the text above it */
+  .stamp--medium { font-size: 0.85rem; }
+  .stamp--huge   { font-size: 1.5rem; border-width: 6px; }
+}
+
+/* ---- the red marker: a loose ellipse around the line ---------------------- */
+
+.undeclared-circle {
+  position: relative;
+  display: inline-block;
+  margin: 0.3em 0.5em;
+  padding: 0.5em 2em; /* an ellipse needs more room than the text's rectangle */
+  font: inherit;
+  line-height: 1.35;
+  text-align: left;
+  color: #8b1a1a;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.undeclared-circle__ring {
+  position: absolute;
+  top: -0.7em;
+  left: -1.6em;
+  width: calc(100% + 3.2em);
+  height: calc(100% + 1.4em);
+  overflow: visible;
+  pointer-events: none;
+}
+.undeclared-circle__ring path {
+  fill: none;
+  stroke: #c0262d;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: url(#marker-ink);
+}
+.undeclared-circle:hover .undeclared-circle__ring path { stroke-width: 4.2; }
+
+/* Phones. This block must stay below the marker's base rules above: an
+   override placed before them would lose to them. */
+@media (max-width: 640px) {
+  .undeclared-circle { margin: 0.3em 0.3em; padding: 0.5em 1.5em; }
+  .undeclared-circle__ring {
+    top: -0.7em;
+    left: -1.2em;
+    width: calc(100% + 2.4em);
+    height: calc(100% + 1.4em);
+  }
+}

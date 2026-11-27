@@ -1,0 +1,38 @@
+/* "Tear off report": print only the clean evidence report. */
+
+/* On screen the report does not exist; it is only for the printer. */
+.print-report { display: none; }
+
+@media print {
+  /* Session list, replay controls, tamper buttons, the ghost clerk, the live
+     badge, the paper itself and the footer all live inside .screen-only. */
+  .screen-only { display: none !important; }
+  .print-report { display: block; }
+
+  /* Clean monospace on white: no backgrounds at all. */
+  *, *::before, *::after {
+    background: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12pt;
+  }
+  .app { max-width: none; padding: 0; }
+
+  .print-report h1 { font-size: 15pt; margin: 0 0 0.8em; }
+  .print-report p  { margin: 0.2em 0; overflow-wrap: anywhere; }
+  .print-report .chain-status { color: #000; }
+  .print-chain-status { font-weight: bold; margin: 0.6em 0 0.8em; }
+  .print-heading { margin-top: 0.8em; font-weight: bold; }
+  .print-undeclared { font-style: italic; }
+  .print-verdict-line--overall {
+    font-weight: bold;
+    margin-top: 1em;
+    padding-top: 0.4em;
+    border-top: 1px solid #000;
+  }
+}

@@ -1,4 +1,4 @@
-﻿# Design — Paper Trail Printout
+# Design — Paper Trail Printout
 
 ## Overview
 
@@ -1238,3 +1238,170 @@ only.
 | `tests/test_import_isolation.py` | Asserts core modules stay stdlib-only |
 | `tests/fixtures/hash_fixture.json` | Shared hash fixture (tab, U+0001, emoji, etc.) |
 | `requirements.txt` | Add fastapi, uvicorn, httpx, mcp |
+
+---
+
+## 9. Design polish (R8)
+
+Only `web/` changes. Data flow, hooks (`useEntries`, `useChainCheck`,
+`useReplay`) and the API are untouched.
+
+### 9.1 Layout
+
+```
+.stage (grid)                      >= 900 px                 < 900 px
+  header   Paper Trail / h1 / lede   spans both columns        top
+  nav      session rolls             left column (sticky)      above the printer
+  main     ghost, printer, paper     right column              below the rolls
+  footer                             spans both columns        bottom
+```
+
+Inside `main`, top to bottom: the ghost clerk (right-aligned, overlapping the
+printer's top edge by a few pixels so he sits on the corner), the printer, then
+the paper. The printer has `z-index` above the paper and the paper has a small
+negative top margin, so the paper appears to come out from under the printer's
+lip, through a dark slot drawn on the printer.
+
+### 9.2 Printer and keys
+
+`Printer` is presentational: a CSS-drawn body (lid band, vent slits, a brand
+plate, the recessed front panel, the slot). It takes `light` (`off | ready |
+busy | error`), `display` (a node) and `children` (the keys).
+
+`Key` wraps `<button class="key key--tone">`. Tones: plain, red, wide. Keys have
+a thick bottom border and a drop shadow; `:active` and `[aria-pressed=true]`
+translate them down and flatten the shadow. Visible labels are real text,
+upper-cased by CSS, so the DOM keeps "Play", not "PLAY".
+
+| Key | Visible | Accessible name |
+|---|---|---|
+| play/pause | Play / Pause | Play / Pause |
+| step | Feed | Feed one line |
+| speed | Slow, Normal, Fast (`aria-pressed`) | Slow, Normal, Fast, in a group "Speed" |
+| tamper | Tamper | Tamper with the paper |
+| restore | Restore | Restore |
+| report | Tear off report | Tear off report |
+
+The display shows the printer's state word (Warming up, Tray empty, Ready,
+Printing, Paused, Finished, Jammed), then the existing `role="status"` paper
+status (`ChainStatus`) and the LIVE badge.
+
+### 9.3 Type and printing
+
+`main.tsx` imports `@fontsource/doto/latin-900.css`. The woff2 is small enough
+that Vite inlines it into the built CSS as a data URI, and it emits the woff
+file beside it as a fallback, so nothing is fetched from outside. `--font-print` is
+`"Doto", "Courier New", monospace`; the rest of the interface keeps Courier.
+Doto 900 was chosen after rendering 500 to 900 at 15 px: lighter weights read
+grey at phone sizes, 900 stays legible.
+
+`lib/ink.ts` exports `MIN_INK = 0.82` and `inkFor(seq)`, a deterministic value
+in [0.82, 1.0]. `PrintLine` sets it as the custom property `--density`, which the
+text uses as `opacity`. (It is `--density`, not `--ink`, because `--ink` is the
+text colour.)
+
+The sweep is two keyframe animations that start when a line mounts printed and
+fresh: `ink-reveal` (clip-path `inset(0 100% 0 0)` to `inset(0)` on the text)
+and `head-sweep` (a small dark bar on the line, moving left to right and
+fading). App marks one line `fresh`: the line at `replay.cursor - 1`. Only that
+line gets the class, so a line that is merely moved between the two tear pieces
+does not animate. All of it lives inside
+`@media (prefers-reduced-motion: no-preference)`.
+
+### 9.4 Stamps
+
+`Stamp({ verdict, size })`, `size` being `small` (default), `medium` or `huge`.
+The class is `stamp stamp--<verdict> stamp--<size>`. Rubber look:
+
+- double rule: `border` plus an inset `box-shadow` ring;
+- `mix-blend-mode: multiply`, so the paper and text show through the ink;
+- `filter: url(#rough-ink)`.
+
+`InkFilters` renders a zero-size SVG once, in `.screen-only`, with two filters.
+`rough-ink`: `feTurbulence` (fractal noise) into `feDisplacementMap` on the
+source graphic, then `feComposite in` with a thresholded second noise so small
+patches of ink are missing. `marker-ink`: the same idea with a smaller
+displacement, for thin marker strokes.
+
+On a line, stamps are `position: absolute` at the right, vertically centred,
+tilted with `--tilt` (small -2deg, medium -4deg, huge -9deg). `stamp-thump`
+scales from 1.9 to 0.92 to 1.04 to 1 and runs with a delay equal to the line
+sweep, with `animation-fill-mode: backwards` so the stamp is invisible until it
+lands. The overall line is taller (about five bars) so the huge stamp is not
+clipped. At 640 px and below the overall line wraps and the stamp is placed
+below the text with a small negative margin.
+
+### 9.5 Undeclared change
+
+`UndeclaredCircle` is still a `<button>` that calls `jumpToLine`. Its text is
+wrapped in a `position: relative` inline-block with an absolutely placed SVG
+ellipse: `viewBox="0 0 100 40"`, `preserveAspectRatio="none"`, an open path
+whose end overshoots its start, `vector-effect: non-scaling-stroke`, red,
+`filter: url(#marker-ink)`.
+
+`MarkerArrow({ targetSeq })` is a child of the undeclared line's `<li>`. A
+layout effect measures the line and `#line-<targetSeq>` with
+`getBoundingClientRect` and sets `height = centre(this) - centre(target)`. It
+measures again on `window` resize and, where `ResizeObserver` exists, whenever
+`.paper-roll` changes size (which covers a tear). If the height is not positive
+it renders nothing. It draws a wobbly vertical stroke ending in an arrowhead
+pointing up, in the empty left part of the line-number gutter.
+
+### 9.6 Tear
+
+`PaperRoll` takes `upper`, `lower` and `torn`. With `torn` false it renders one
+`paper-piece` holding everything. With `torn` true it renders:
+
+```
+.paper-roll
+  .paper-piece.paper-piece--upper      drop-shadow
+    .paper-piece__sheet                bars, tractor holes, clip-path: jagged bottom
+  .paper-gap  role="img" aria-label="Paper torn here"
+  .paper-piece.paper-piece--lower      drop-shadow, translate + rotate(1.2deg)
+    .paper-piece__sheet                bars, tractor holes, clip-path: jagged top
+```
+
+The shadow is on the outer element and the clip on the inner one, because
+`filter` is applied before `clip-path` and would otherwise be cut off. The
+lower sheet's bars are offset by its jagged padding so lines still sit on bars.
+`.paper-roll` uses `overflow-x: clip` (not `hidden`, which would also clip
+vertically and show a scroll bar when the rotated piece overflows) so a
+rotated piece or a stamp being pressed cannot widen the page.
+
+`App` splits the display lines at `index = lines.findIndex(l => !l._synthetic &&
+l.seq === brokenAt)`. If the index is -1 the roll is not split. The old
+`TearLine` component and the `torn` prop of `PrintLine` are removed.
+
+### 9.7 Wording
+
+`lib/entryText.ts` gains `verdictSentence(data)` and `overallSentence(verdict)`;
+`entryText` uses them. The verb comes from `claim` (`files_created` created,
+`files_modified` changed, `files_deleted` deleted, `files_read` read).
+`PrintReport` prefixes each sentence with the verdict word and ends with
+`<overall sentence> (<VERDICT>)`.
+
+### 9.8 Ghost clerk
+
+`GhostClerk` renders `<aside aria-label="Ghost clerk">`: the speech bubble
+(`<p aria-live="polite">`, tail pointing right) then the figure. The figure is
+a wrapper that bobs (`ghost-bob`, 3.2 s, infinite) around the SVG, which plays
+`ghost-jump` once whenever `data-expression="alarmed"` starts to match. The SVG
+is drawn at 120 px (96 px at 640 px and below) with a small shadow ellipse under
+him. Messages are reworded to the key names; the 96-character limit stays.
+
+### 9.9 Colour and contrast
+
+All colours that carry text are CSS variables in `:root` as six-digit hex, so
+`styles.test.ts` can check each pair: stage text on stage, muted text on stage,
+link on stage, key label on key face, white on the red key, selected key, the
+display ink on the display, display warning on the display, ink on paper and on
+a bar, the lightest ink density on a bar, the three stamp colours on a bar, and
+the clerk's text on his bubble.
+
+### 9.10 Tests
+
+Updated: `App`, `a11y`, `entryText`, `GhostClerk`, `Stamp`, `styles`. New:
+`Printer` (keys, names, light and display), `PaperRoll` (split and joined), a
+`MarkerArrow` test with mocked `getBoundingClientRect`, `ink` (range and
+determinism) and a fonts test (package dependency, import in `main.tsx`, no
+external font host). `package.json` gains `"dev": "vite"`.

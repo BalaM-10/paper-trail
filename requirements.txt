@@ -1,4 +1,4 @@
-﻿pytest
+pytest
 hypothesis
 fastapi
 uvicorn[standard]

@@ -525,3 +525,157 @@ cause `fastapi`, `uvicorn`, `httpx`, or `mcp` to appear in `sys.modules`.
 - AC7.2b: MCP server modifies no files outside `.papertrail/`.
 - AC7.2c: No secrets, absolute paths, or machine-specific values in any
   committed file.
+
+---
+
+## R8 — Design polish
+
+A visual and wording redesign of the web printout. The records, the API, the
+MCP server and the verifier are not touched. Where this section conflicts with
+AC4.3a (heading), the verdict-line wording in R4.6, AC4.10a (clerk position) or
+the visible label in AC4.13c, this section wins. Accessible names that earlier
+tests rely on are kept (for example "Tamper with the paper").
+
+### R8.1 Stage, printer and front panel
+
+The page is a night-time stage with a drawn printer at the top. The paper feeds
+out of the printer and runs down the page. The controls are the printer's front
+panel.
+
+**Acceptance criteria**
+
+- AC8.1a: The page background is dark (relative luminance below 0.03).
+- AC8.1b: A printer body, drawn in CSS or SVG, sits above the paper. The paper
+  comes out of a slot in the bottom of the printer, is narrower than the
+  printer, and is at least 60% of the viewport tall, so it fills most of the
+  screen.
+- AC8.1c: The front panel holds chunky keys with printed labels: PLAY (which
+  becomes PAUSE while printing), FEED (one line at a time), SLOW, NORMAL and
+  FAST, a red TAMPER key, a RESTORE key and a TEAR OFF REPORT key. Every key is
+  a native button. A pressed key moves down and loses its shadow.
+- AC8.1d: Accessible names: "Play" or "Pause", "Feed one line", "Slow",
+  "Normal", "Fast" (the selected one has `aria-pressed="true"`), "Tamper with
+  the paper", "Restore", "Tear off report". Each visible label is contained in
+  its accessible name.
+- AC8.1e: A small status light and a small display sit on the panel. The light
+  is green when ready, paused or finished, amber and pulsing while printing, red
+  when the paper is torn, and off when there are no records. The display always
+  says the same thing in words, so the light is never the only signal. The
+  display holds the "Paper intact" / "Paper torn at line N" status, and the
+  LIVE badge in live mode.
+- AC8.1f: Sessions are drawn as rolls of paper. At 900 px wide and above they
+  are a column to the left of the printer; below 900 px they sit above it.
+
+### R8.2 Type and printing
+
+**Acceptance criteria**
+
+- AC8.2a: Printed lines use Doto, an open-licence (OFL-1.1) dot-matrix font,
+  self-hosted through the `@fontsource/doto` package, weight 900. No file,
+  stylesheet or link points at an external font service. The built site
+  contains the font files.
+- AC8.2b: A line that has just printed appears left to right over about 0.4 s,
+  with a small print head sweeping along it. Only the most recently printed line
+  animates, and tearing, restoring or changing session never replays it.
+- AC8.2c: Each line has a slightly different ink density between 0.82 and 1.0,
+  derived from its line number (the same line always looks the same). The
+  lightest density still gives at least 4.5:1 contrast on a green bar.
+- AC8.2d: Under `prefers-reduced-motion: reduce`, lines appear at once with no
+  sweep.
+
+### R8.3 Stamps
+
+**Acceptance criteria**
+
+- AC8.3a: A stamp looks like a rubber stamp: a double-ruled border, capital
+  letters, a tilt, ink that blends into the paper, and rough edges from an SVG
+  filter (turbulence plus displacement) that is defined once in the page.
+- AC8.3b: There are three sizes. Small is used on session rolls, medium on
+  per-line verdicts, huge on the overall verdict. The overall stamp has the
+  largest font size of anything on the paper.
+- AC8.3c: A stamp lands with a short thump (large, then a slight squash, then at
+  rest) just after its line has printed. Under reduced motion it appears
+  without animation.
+- AC8.3d: On screens wider than 640 px a stamp is pressed over the right-hand
+  end of its line. At 640 px and below the overall stamp sits under its line's
+  text so the text stays readable.
+- AC8.3e: A stamp always carries its word (SUPPORTED, CONTRADICTED or
+  UNVERIFIED) in the colours from AC4.7.
+
+### R8.4 Undeclared change
+
+**Acceptance criteria**
+
+- AC8.4a: The "witness saw it, the agent never mentioned it" line is circled
+  with a hand-drawn red marker ellipse (a loose SVG path whose ends overlap),
+  not a CSS border.
+- AC8.4b: A hand-drawn marker arrow runs up from that line to the witness line
+  that proves it. Its length comes from the measured positions of the two lines
+  and is measured again when the window or the paper changes size. Where
+  layout is not available the arrow is left out.
+- AC8.4c: Activating the circled line still moves focus to the witness line.
+
+### R8.5 Tear
+
+**Acceptance criteria**
+
+- AC8.5a: When the paper is torn at line N, the printout is split in two at
+  that line. The upper piece ends in a jagged torn edge. The lower piece, which
+  starts with line N, begins with a jagged torn edge.
+- AC8.5b: The stage shows through the gap between the pieces. The lower piece
+  is shifted and turned by one to two degrees, and both pieces cast a shadow.
+  Nothing is drawn across the text.
+- AC8.5c: The gap is exposed to assistive technology as an image named "Paper
+  torn here".
+- AC8.5d: Restore joins the pieces again. Neither tearing nor restoring makes
+  any line print again.
+- AC8.5e: If the broken line is in another session, the selected session is
+  not split, and the display still says where the paper is torn.
+
+### R8.6 Wording
+
+**Acceptance criteria**
+
+- AC8.6a: The product name "Paper Trail" is shown in small type above a heading
+  that reads "Did the agent do what it said?", followed by one sentence of
+  explanation.
+- AC8.6b: A verdict line is a sentence:
+  - supported: "Agent said it deleted sample/cache/output.bin. Witness agrees
+    (line 11)." (For a file read: "The record agrees".)
+  - contradicted: "Agent said it deleted X. Witness says otherwise (line 11)."
+  - unverified: "Agent said it deleted X. There is no evidence either way."
+  The verb is created, changed, deleted or read.
+- AC8.6c: The last line of a checked statement reads "Overall: the statement
+  matches the evidence." (SUPPORTED), "Overall: the statement does not match the
+  evidence." (CONTRADICTED) or "Overall: some of the statement could not be
+  checked." (UNVERIFIED), with the huge stamp.
+- AC8.6d: In the tear-off report each verdict sentence starts with its verdict
+  word in capitals, and the last line is the overall sentence followed by the
+  verdict word in brackets. The paper status is still included.
+- AC8.6e: The plain-language rule (R4.13) still holds for every string,
+  including the new labels.
+
+### R8.7 Ghost clerk
+
+**Acceptance criteria**
+
+- AC8.7a: The clerk is about twice his earlier size (120 px, or 96 px at 640 px
+  and below). He sits on the top-right corner of the printer with his speech
+  bubble to his left. He no longer floats over the page.
+- AC8.7b: He bobs gently while idle and jumps once when he becomes alarmed. Both
+  are switched off under reduced motion.
+- AC8.7c: His messages keep their dry humour, stay at 96 characters or fewer,
+  always say what to do next, and use the names printed on the printer's keys
+  (PLAY, PAUSE, FEED, TAMPER, RESTORE).
+
+### R8.8 Operability and scripts
+
+**Acceptance criteria**
+
+- AC8.8a: Everything stays keyboard operable. Focus is visible on the dark
+  stage, on the printer and on the paper.
+- AC8.8b: At 375 px and 320 px wide the page does not scroll sideways, and every
+  key is at least 44 px tall.
+- AC8.8c: `web/package.json` has the scripts `dev` (`vite`), `build`, `test` and
+  `preview` (`vite preview`).
+- AC8.8d: `npx vitest run` and `npm run build` pass.

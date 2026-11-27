@@ -1,4 +1,4 @@
-﻿# Tasks — Paper Trail Printout
+# Tasks — Paper Trail Printout
 
 Each task ends with a **Check** that must pass before the next task starts.
 Run checks from the project root unless stated otherwise. No task check may
@@ -1205,3 +1205,129 @@ Get-Content .github\workflows\pages.yml | Select-Object -First 5
 git status web/public/demo/ledger.jsonl
 ```
 The workflow file must exist and the ledger must be tracked by git.
+
+---
+
+## Task 11 — Design polish (R8)
+
+**Delivers:** the redesigned web printout. Only `web/` changes. No task check
+starts a server.
+
+### 11a — Font and scripts
+
+`npm install @fontsource/doto`; import `@fontsource/doto/latin-900.css` in
+`main.tsx`. Add `"dev": "vite"` next to the existing `preview` script. Update
+`index.html`'s title.
+
+### 11b — Wording and ink (lib)
+
+`lib/entryText.ts`: `verdictSentence`, `overallSentence`; `entryText` uses them.
+`lib/ink.ts`: `MIN_INK`, `inkFor`. Update `entryText.test.ts`; add `ink.test.ts`.
+
+### 11c — Stamps and filters
+
+`Stamp` gets `size`. New `InkFilters`. Rewrite `stamps.css` (rubber look, three
+sizes, thump, marker ellipse).
+
+### 11d — Printer and keys
+
+New `Key`, `Printer`. Rewrite `ReplayControls` as keys (play/pause, feed, three
+speed keys). Tamper, restore and tear-off become keys.
+
+### 11e — Paper, tear and lines
+
+`PaperRoll` with `upper`/`lower`/`torn`; delete `TearLine`. `PrintLine` gains
+`fresh` and `--ink`, loses `torn`. `UndeclaredCircle` with the marker ellipse;
+new `MarkerArrow`.
+
+### 11f — Rolls, header, clerk
+
+Restyle `SessionSpool` and `SessionList` as rolls. New `Header` (product name,
+h1, lede). `GhostClerk`: bubble plus figure, 120 px, bob and jump, new messages.
+
+### 11g — App and CSS
+
+Recompose `App` (stage grid, ghost, printer, paper). Rewrite `paper.css` and
+adjust `print.css` where needed.
+
+### 11h — Tests
+
+Update `App`, `a11y`, `GhostClerk`, `Stamp`, `styles`. Add `Printer`,
+`PaperRoll`, `MarkerArrow` and `fonts` tests.
+
+### 11i — Look at it in a browser
+
+Render snapshots of the built CSS in one-shot headless Chrome (no server) at
+1100, 375 and 320 px; check there is no sideways scroll and that the tear,
+stamps, marker and clerk look right. Delete the throwaway files afterwards.
+
+**Check:**
+```powershell
+cd web
+npx vitest run
+npm run build
+```
+Both exit 0. The built CSS names Doto and carries it (the small woff2 inlined
+as a data URI, with a `.woff` file in `dist/assets`), and no source file or
+built file mentions an external font host.
+
+**As built (Task 11).**
+
+- **Font.** Doto at weight 900. I rendered Doto 500, 700, 800 and 900 and VT323
+  at phone sizes: the lighter Doto weights read grey at 15 px, VT323 is
+  legible but does not look dotted. VT323 was removed again.
+- **Looked at in a real browser** (one-shot headless Chrome driving the built
+  `dist` through an iframe, no server): desktop 1100 px, phone 375 px and
+  320 px, finished, torn and SUPPORTED. No sideways scroll at any width.
+  That found four defects, now fixed and pinned by tests: the red ring struck
+  through its first letters because an ellipse needs more room than a
+  rectangle; the first phone fix for that sat above its base rule in the
+  stylesheet and so never applied (a test now checks the order); a torn page
+  ended far shorter than a whole one; and the overall stamp touched its text
+  on phones.
+- **Byte-order marks.** `Set-Content -Encoding utf8` in Windows PowerShell 5
+  adds a BOM, which made `package.json` unreadable to PostCSS and broke the
+  build. Twelve files that earlier edits had touched this way were rewritten
+  without one.
+- **Known small flaw.** On a phone the right-hand curve of the red ring can
+  still touch the last letter of the first row of that line. It stays legible.
+
+---
+
+## Execution notes (as built)
+
+Where the build differs from the plan above, and why.
+
+- **Web config.** One `tsconfig.json` (the app) plus `tsconfig.node.json` for
+  `vite.config.ts`; no project references. `npm run build` type-checks both,
+  then runs `vite build`. `defineConfig` comes from `vitest/config` (so the
+  `test` key type-checks). The `@@fixtures` alias lives only in the top-level
+  `resolve.alias`. Added dev dependencies `@testing-library/dom` (peer of
+  `@testing-library/react` 16) and `@types/node`; dropped the unused
+  `@vitest/coverage-v8`. `mcp` is pinned `>=2,<3` (the 2.x `MCPServer` API).
+- **Tasks 6 and 8 overlap.** Tamper/restore and "Check this statement" were
+  built in Task 6 because `App.test.tsx` needs them. Task 8 became the
+  accessibility, print and style-contract checks (`a11y.test.tsx`,
+  `styles.test.ts`).
+- **`useEntries`.** Keeps `original` and `tampered` as separate state. Polling
+  only updates `original`, so a tampered view can never be overwritten; no
+  reference-equality check is needed. Restore drops the copy.
+- **Printing.** The report is a separate print-only block (`PrintReport`); all
+  other UI sits in `.screen-only`, which `print.css` hides. Lines the replay
+  has not reached still appear in the report.
+- **Ghost messages** were shortened to 96 characters or fewer, each with a next
+  step, so they fit three lines of the phone bar at 320 px. A test enforces
+  length, the plain-language word ban and a next-step verb.
+- **Added tests** beyond the plan: `useEntries`, `useReplay`, `entryText`,
+  `sessionMeta`/`synthesiseUndeclared`, `GhostClerk`, `a11y`, `styles`
+  (including WCAG contrast of every colour pair). Vitest replaces CSS imports
+  with an empty string even with `?raw`, so `styles.test.ts` reads from disk.
+- **Verifier.** `verify()` gained an optional `ledger_path` argument so callers
+  such as the demo generator never write to the project's own ledger.
+- **Checked in a real browser (one-shot headless Chrome, no server).** The
+  built `dist/index.html` opened from disk loads the demo ledger and reports
+  "Paper intact". Rendered snapshots at 1100, 375 and 320 px showed no sideways
+  scrolling. That check found three defects, now fixed and guarded by tests: a
+  stamp mid-press widened the page by 3 px on phones (`.paper-roll` now clips),
+  perforation rows left green bars in the side gutters, and the longest clerk
+  messages were cut off at 320 px.
