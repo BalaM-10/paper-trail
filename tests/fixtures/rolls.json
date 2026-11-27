@@ -1,0 +1,145 @@
+{
+  "note": "Written by hand. Python (tests/test_rolls.py) and TypeScript (web/src/__tests__/rolls.test.ts) must both split records into exactly these rolls. Records have no hash: the split never reads it. Every record has the date 2026-03-04 unless it has its own ts.",
+  "cases": [
+    {
+      "name": "no turn record: one roll, as before",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "start", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "tool", "data": {"tool_name": "read_file", "tool_input": {"path": "a.py"}}},
+        {"seq": 3, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 4, "session_id": "s1", "kind": "statement", "data": {"summary": "Read a.py.", "witness_seq": 3}},
+        {"seq": 5, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "SUPPORTED", "witness_seq": 3}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 1, "turnStart": false, "seqs": [1, 2, 3, 4, 5], "title": "Read a.py.", "overall": "SUPPORTED", "statementNumber": 1, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "no turn record and no statement: the first 8 characters of the id",
+      "entries": [
+        {"seq": 1, "session_id": "abcdef1234567890", "kind": "tool", "data": {}}
+      ],
+      "rolls": [
+        {"sessionId": "abcdef1234567890", "number": 1, "count": 1, "turnStart": false, "seqs": [1], "title": "abcdef12", "overall": null, "statementNumber": null, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "no turn record, silent agent: titled No statement written",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "start", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": ["a.txt"], "modified": [], "deleted": []}}},
+        {"seq": 3, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "NO_STATEMENT", "witness_seq": 2, "undeclared": [{"path": "a.txt", "change": "created"}]}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 1, "turnStart": false, "seqs": [1, 2, 3], "title": "No statement written", "overall": "NO_STATEMENT", "statementNumber": null, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "two turns: the session start joins the first roll, each tool call stays in its turn",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "start", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 3, "session_id": "s1", "kind": "tool", "data": {"tool_name": "fs_write", "tool_input": {"path": "plan.md"}}},
+        {"seq": 4, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "baseline": "turn:2", "diff": {"created": ["plan.md"], "modified": [], "deleted": []}}},
+        {"seq": 5, "session_id": "s1", "kind": "statement", "data": {"summary": "Wrote the plan.", "witness_seq": 4}},
+        {"seq": 6, "session_id": "s1", "kind": "verdict", "data": {"path": "plan.md", "claim": "files_created", "verdict": "SUPPORTED", "evidence_seq": [4], "witness_seq": 4}},
+        {"seq": 7, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "SUPPORTED", "witness_seq": 4}},
+        {"seq": 8, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 9, "session_id": "s1", "kind": "witness", "data": {"event": "between_turns", "diff": {"created": [], "modified": [], "deleted": ["old.txt"]}, "baseline": "stop:4", "witness_seq": 8, "evidence_seq": [4, 8], "unfinished": false}},
+        {"seq": 10, "session_id": "s1", "kind": "tool", "data": {"tool_name": "execute_pwsh", "tool_input": {"command": "rm drafts/a.txt"}}},
+        {"seq": 11, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "baseline": "turn:8", "diff": {"created": [], "modified": [], "deleted": ["drafts/a.txt"]}}},
+        {"seq": 12, "session_id": "s1", "kind": "statement", "data": {"summary": "Cleared a draft.", "witness_seq": 11}},
+        {"seq": 13, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "SUPPORTED", "witness_seq": 11}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 2, "turnStart": true, "seqs": [1, 2, 3, 4, 5, 6, 7], "title": "Wrote the plan.", "overall": "SUPPORTED", "statementNumber": 1, "hasUnverifiedStatement": false},
+        {"sessionId": "s1", "number": 2, "count": 2, "turnStart": true, "seqs": [8, 9, 10, 11, 12, 13], "title": "Cleared a draft.", "overall": "SUPPORTED", "statementNumber": 2, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "a verdict written later belongs to the roll of the stop it checked",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 3, "session_id": "s1", "kind": "statement", "data": {"summary": "First.", "witness_seq": 2}},
+        {"seq": 4, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 5, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 6, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "SUPPORTED", "witness_seq": 2}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 2, "turnStart": true, "seqs": [1, 2, 3, 6], "title": "First.", "overall": "SUPPORTED", "statementNumber": 1, "hasUnverifiedStatement": false},
+        {"sessionId": "s1", "number": 2, "count": 2, "turnStart": true, "seqs": [4, 5], "title": "Nothing changed", "overall": null, "statementNumber": null, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "a turn that has not stopped yet is in progress",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "tool", "data": {"tool_name": "read_file", "tool_input": {"path": "a.py"}}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 1, "turnStart": true, "seqs": [1, 2], "title": "Turn in progress", "overall": null, "statementNumber": null, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "a turn where the agent changed files and said nothing",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": ["a.txt"], "modified": [], "deleted": []}}},
+        {"seq": 3, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "NO_STATEMENT", "witness_seq": 2, "undeclared": [{"path": "a.txt", "change": "created"}]}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 1, "turnStart": true, "seqs": [1, 2, 3], "title": "No statement written", "overall": "NO_STATEMENT", "statementNumber": null, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "a statement that has no overall verdict yet",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 3, "session_id": "s1", "kind": "statement", "data": {"summary": "Waiting.", "witness_seq": 2}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 1, "turnStart": true, "seqs": [1, 2, 3], "title": "Waiting.", "overall": null, "statementNumber": 1, "hasUnverifiedStatement": true}
+      ]
+    },
+    {
+      "name": "two statements in one turn: the newest gives the title and the number",
+      "entries": [
+        {"seq": 1, "session_id": "s1", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 2, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 3, "session_id": "s1", "kind": "statement", "data": {"summary": "First.", "witness_seq": 2}},
+        {"seq": 4, "session_id": "s1", "kind": "verdict", "data": {"kind_detail": "statement_overall", "verdict": "SUPPORTED", "witness_seq": 2}},
+        {"seq": 5, "session_id": "s1", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 6, "session_id": "s1", "kind": "statement", "data": {"summary": "Second.", "witness_seq": 5}}
+      ],
+      "rolls": [
+        {"sessionId": "s1", "number": 1, "count": 1, "turnStart": true, "seqs": [1, 2, 3, 4, 5, 6], "title": "Second.", "overall": "SUPPORTED", "statementNumber": 2, "hasUnverifiedStatement": true}
+      ]
+    },
+    {
+      "name": "two sessions that take turns: rolls follow the order the sessions first appear",
+      "entries": [
+        {"seq": 1, "session_id": "a", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 2, "session_id": "b", "kind": "witness", "data": {"event": "turn", "snapshot": {}}},
+        {"seq": 3, "session_id": "a", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 4, "session_id": "b", "kind": "witness", "data": {"event": "stop", "diff": {"created": [], "modified": [], "deleted": []}}},
+        {"seq": 5, "session_id": "a", "kind": "witness", "data": {"event": "turn", "snapshot": {}}}
+      ],
+      "rolls": [
+        {"sessionId": "a", "number": 1, "count": 2, "turnStart": true, "seqs": [1, 3], "title": "Nothing changed", "overall": null, "statementNumber": null, "hasUnverifiedStatement": false},
+        {"sessionId": "a", "number": 2, "count": 2, "turnStart": true, "seqs": [5], "title": "Turn in progress", "overall": null, "statementNumber": null, "hasUnverifiedStatement": false},
+        {"sessionId": "b", "number": 1, "count": 1, "turnStart": true, "seqs": [2, 4], "title": "Nothing changed", "overall": null, "statementNumber": null, "hasUnverifiedStatement": false}
+      ]
+    },
+    {
+      "name": "a statement without a summary falls back to the first 8 characters of the id",
+      "entries": [
+        {"seq": 1, "session_id": "abcdef1234567890", "kind": "statement", "data": {"witness_seq": 9}}
+      ],
+      "rolls": [
+        {"sessionId": "abcdef1234567890", "number": 1, "count": 1, "turnStart": false, "seqs": [1], "title": "abcdef12", "overall": null, "statementNumber": 1, "hasUnverifiedStatement": true}
+      ]
+    }
+  ]
+}

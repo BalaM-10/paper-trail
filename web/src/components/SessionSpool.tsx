@@ -1,18 +1,18 @@
 import { useState } from "react";
-import type { SessionMeta } from "../lib/sessionMeta";
+import { turnLabel, type Roll } from "../lib/rolls";
 import type { Source } from "../hooks/useEntries";
 import { Stamp } from "./Stamp";
 
 type Props = {
-  meta: SessionMeta;
+  meta: Roll;
   selected: boolean;
   source: Source;
-  onSelect: (sessionId: string) => void;
+  onSelect: (key: string) => void;
   /** Called after a statement was checked, so the records can be re-read. */
   onVerified: () => void;
 };
 
-/** One session, drawn as a spool of paper, titled by what the agent said it did. */
+/** One turn of a session, drawn as a spool of paper, titled by what the agent said it did. */
 export function SessionSpool({ meta, selected, source, onSelect, onVerified }: Props) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -44,7 +44,7 @@ export function SessionSpool({ meta, selected, source, onSelect, onVerified }: P
         type="button"
         className="spool"
         aria-pressed={selected}
-        onClick={() => onSelect(meta.sessionId)}
+        onClick={() => onSelect(meta.key)}
       >
         <span className="spool__roll" aria-hidden="true">
           <span className="spool__core" />
@@ -52,7 +52,13 @@ export function SessionSpool({ meta, selected, source, onSelect, onVerified }: P
         <span className="spool__body">
           <span className="spool__title">{meta.title}</span>
           <span className="spool__meta">
-            {meta.sessionId.slice(0, 8)} · {meta.date}
+            {meta.sessionId.slice(0, 8)} ·{" "}
+            {turnLabel(meta) && (
+              <>
+                <span className="nobreak">{turnLabel(meta)}</span> ·{" "}
+              </>
+            )}
+            <span className="nobreak">{meta.date}</span>
           </span>
           {meta.overallVerdict && <Stamp verdict={meta.overallVerdict} />}
         </span>

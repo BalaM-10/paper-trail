@@ -138,8 +138,21 @@ def _folder_pattern(path: str) -> re.Pattern[str] | None:
     parts = [re.escape(p) for p in re.split(r"[/\\]+", path) if p]
     if not parts:  # "/" or "": nothing to name
         return None
-    return re.compile(r"[/\\]+".join(parts) + r"""(?=[/\\"'<>\s]|$)""", re.IGNORECASE)
-
+    # A rooted path (/home/me/proj, \\server\share\proj) names its leading separator too,
+    # or "cd /home/me/proj;" would come out as "cd /.;".
+    if path.startswith(("//", "\\\\")):
+        lead = r"[/\\]{2,}"
+    elif path.startswith(("/", "\\")):
+        lead = r"[/\\]"
+    else:
+        lead = ""
+    # Not in the middle of a word before it, and not followed by anything that would make
+    # it a longer name: "proj-two", "proj.old", "proj2" are other folders. Anything else
+    # (; , ) ] } | : ! ? a quote, a slash, white space, a full stop, the end) ends it.
+    return re.compile(
+        r"(?<![\w])" + lead + r"[/\\]+".join(parts) + r"(?![\w~-]|\.[\w~-])",
+        re.IGNORECASE,
+    )
 
 def _shorten(match: re.Match[str]) -> str:
     token = match.group(0)

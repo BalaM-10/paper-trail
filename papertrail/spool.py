@@ -6,6 +6,11 @@ The lines are the sentences the screen prints. `entry_text` and its helpers are
 the twin of web/src/lib/entryText.ts; tests/fixtures/sentences.json is read by
 tests in both languages, so the two cannot drift apart unnoticed.
 
+A session with several turns is printed as several rolls, one per turn (see
+papertrail/rolls.py), each its own report with its own heading, numbered within
+the session and titled by its statement, and separated by a tear line. Line
+numbers are the real record numbers.
+
 The last logical line is the fingerprint of the whole record (the hash of its
 last entry) and the number of entries, so a printed page can be checked against
 the record later. No file contents and no absolute paths appear here: everything
@@ -15,7 +20,7 @@ comes from the ledger, which never holds them.
 import textwrap
 from pathlib import Path
 
-from papertrail import ledger
+from papertrail import ledger, rolls
 from papertrail.outcome import NO_STATEMENT, is_overall, valid_session_id
 
 WIDTH = 80
@@ -80,6 +85,20 @@ def overall_sentence(verdict) -> str:
     return "Overall: some of the statement could not be checked."
 
 
+def between_turns_text(d: dict) -> str:
+    """What changed between two turns, outside the agent."""
+    diff = d.get("diff") or {}
+    groups = [
+        ("created", _list(diff.get("created"))),
+        ("changed", _list(diff.get("modified"))),
+        ("deleted", _list(diff.get("deleted"))),
+    ]
+    listing = "; ".join(f"{label} {', '.join(files)}" for label, files in groups if files) or "no changes"
+    if d.get("unfinished") is True:
+        return f"Since the unfinished turn before this one: {listing}. The agent may have made some of these changes."
+    return f"Between turns, outside the agent: {listing}."
+
+
 def entry_text(entry: dict) -> str:
     """Plain-language description of one record. `kind` may also be "undeclared"."""
     kind = entry["kind"]
@@ -88,6 +107,10 @@ def entry_text(entry: dict) -> str:
     if kind == "witness":
         if d.get("event") == "start":
             return "Witness took a snapshot of the project."
+        if d.get("event") == "turn":
+            return "Witness took a snapshot of the project at the start of this turn."
+        if d.get("event") == "between_turns":
+            return between_turns_text(d)
         diff = d.get("diff") or {}
         groups = [
             ("Created", _list(diff.get("created"))),
@@ -96,7 +119,8 @@ def entry_text(entry: dict) -> str:
         ]
         parts = [f"{label}: {', '.join(files)}." for label, files in groups if files]
         summary = " ".join(parts) if parts else "No changes."
-        return f"Witness compared the project to the earlier snapshot. {summary}"
+        since = "the snapshot from the start of this turn" if str(d.get("baseline", "")).startswith("turn:") else "the earlier snapshot"
+        return f"Witness compared the project to {since}. {summary}"
 
     if kind == "tool":
         name = str(d.get("tool_name", "unknown"))
@@ -163,36 +187,47 @@ def _wrap(text: str, width: int, *, break_words: bool = True) -> list[str]:
     ) or [""]
 
 
+TEAR = ("- " * 12 + "tear here " + "- " * 12).rstrip()
+
+
 def render(entries: list[dict], session_id: str, chain: tuple[bool, int | None]) -> str:
     """
     The session as text, from all the record's entries and a chain check result.
-    No line is longer than WIDTH characters.
+    One report per roll (turn). No line is longer than WIDTH characters.
     """
     mine = [e for e in entries if e["session_id"] == session_id]
-    summaries = [e["data"].get("summary") for e in mine if e["kind"] == "statement"]
-    statement = " ".join(str(summaries[-1]).split()) if summaries and summaries[-1] else "none written"
+    session_rolls = rolls.split_session(mine)
     ok, broken_at = chain
     status = "Paper intact" if ok else f"Paper torn at line {broken_at}"
 
-    out: list[str] = []
-    for header in (
-        "PAPER TRAIL - evidence report",
-        f"Session: {session_id}",
-        f"Statement: {statement}",
-        status,
-    ):
-        out.extend(_wrap(header, WIDTH))
+    rows_by_roll = [_numbered_lines(list(r.entries)) for r in session_rolls]
+    gutter = max(3, max((len(number) for rows in rows_by_roll for number, _ in rows), default=3)) + 2
     rule = "-" * WIDTH
-    out.append(rule)
 
-    rows = _numbered_lines(mine)
-    gutter = max(3, max((len(number) for number, _ in rows), default=3)) + 2
-    for number, text in rows:
-        first, *rest = _wrap(text, WIDTH - gutter)
-        out.append(number.rjust(gutter - 2) + "  " + first)
-        out.extend(" " * gutter + more for more in rest)
+    out: list[str] = []
+    for index, (roll, rows) in enumerate(zip(session_rolls, rows_by_roll)):
+        if index:
+            out.append(TEAR)
+        summaries = [e["data"].get("summary") for e in roll.entries if e["kind"] == "statement"]
+        statement = " ".join(str(summaries[-1]).split()) if summaries and summaries[-1] else "none written"
+        headers = ["PAPER TRAIL - evidence report", f"Session: {session_id}"]
+        if roll.count > 1:
+            headers.append(f"Turn: {roll.number} of {roll.count}")
+        headers += [f"Statement: {statement}", status]
+        for header in headers:
+            out.extend(_wrap(header, WIDTH))
+        out.append(rule)
+        for number, text in rows:
+            first, *rest = _wrap(text, WIDTH - gutter)
+            out.append(number.rjust(gutter - 2) + "  " + first)
+            out.extend(" " * gutter + more for more in rest)
+        out.append(rule)
 
-    out.append(rule)
+    if not session_rolls:  # a session with no records still prints a heading
+        out.extend(_wrap("PAPER TRAIL - evidence report", WIDTH))
+        out.extend(_wrap(f"Session: {session_id}", WIDTH))
+        out.extend([_wrap("Statement: none written", WIDTH)[0], status, rule, rule])
+
     # One logical line; at 80 columns the hash and the count land together on the last row.
     out.extend(_wrap(fingerprint_line(entries), WIDTH, break_words=False))
     return "\n".join(out) + "\n"

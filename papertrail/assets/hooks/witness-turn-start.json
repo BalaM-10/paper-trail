@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Witness turn start",
+      "trigger": "UserPromptSubmit",
+      "description": "When the person sends a prompt, take a snapshot of the project. What changed since the last reply is then recorded as outside the agent, not blamed on it. Prints nothing and always exits 0.",
+      "action": {
+        "type": "command",
+        "command": "python .kiro/hooks/witness.py turn"
+      }
+    }
+  ]
+}

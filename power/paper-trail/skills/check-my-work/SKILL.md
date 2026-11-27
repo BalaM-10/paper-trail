@@ -9,11 +9,16 @@ Use the `paper-trail` server's tools. They read the record; they never change it
 
 ## Step 1: Find the session
 
-Call `list_sessions`. Each session has an id and a short summary.
+Call `list_sessions`. It returns one item per turn (one reply of the agent): the
+session id, the turn number (`turn` of `turns`), a title (the statement), and the
+overall verdict. A chat is one session with many turns; each turn is checked on
+its own.
 
 ## Step 2: Check the statement
 
-Call `verify_statement` with the session id. Each line of the statement gets one
+Call `verify_statement` with the session id (a statement is normally checked when
+the turn ends, so this shows the stored result). To look at one turn's records,
+call `get_entries` with the session id and the turn number. Each line of the statement gets one
 verdict:
 
 - SUPPORTED: the evidence agrees.
@@ -27,7 +32,9 @@ NO_STATEMENT.
 ## Step 3: Say it plainly
 
 Report the overall verdict first, then each CONTRADICTED line and each undeclared
-change, naming the file. Do not describe an UNVERIFIED line as wrong: it only
+change, naming the file. A line that says "Between turns, outside the agent" is
+something the person changed between replies: mention it, but it is not the
+agent's. Do not describe an UNVERIFIED line as wrong: it only
 means nothing could confirm it.
 
 ## Step 4: Print it, if asked

@@ -29,6 +29,7 @@
   .print-chain-status { font-weight: bold; margin: 0.6em 0 0.8em; }
   .print-heading { margin-top: 0.8em; font-weight: bold; }
   .print-undeclared { font-style: italic; }
+  .print-between { font-style: italic; }
   .print-fingerprint { margin-top: 1em; font-size: 9pt; }
   .print-verdict-line--overall {
     font-weight: bold;

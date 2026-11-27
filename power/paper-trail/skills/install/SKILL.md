@@ -21,7 +21,9 @@ Run this, with the project folder in place of `<project_folder>`:
 python -m papertrail init <project_folder>
 ```
 
-It copies four hook files and two hook scripts into `.kiro/hooks`, the statement
+It copies five hook files and two hook scripts into `.kiro/hooks` (one of them,
+`witness-turn-start.json`, runs when the person sends a prompt, so that what the
+person changes between replies is not blamed on the agent), the statement
 rule into `.kiro/steering`, adds the `paper-trail` server to
 `.kiro/settings/mcp.json` and `.papertrail/` to `.gitignore`. It never replaces a
 file that differs. If it says "Left alone", show the user the line and ask
@@ -32,4 +34,5 @@ before running it again with `--force`.
 Run `python -m papertrail doctor <project_folder>` and read it back to the user.
 Every line should start with OK. For a MISSING line, follow its "Fix:" line.
 
-Running `init` again is safe: when nothing is missing it changes nothing.
+Running `init` again is safe: when nothing is missing it changes nothing. A project
+set up before the turn-start hook existed gets just that file.

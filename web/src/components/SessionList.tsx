@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
 import type { Source } from "../hooks/useEntries";
-import type { SessionMeta } from "../lib/sessionMeta";
+import type { Roll } from "../lib/rolls";
 import { SessionSpool } from "./SessionSpool";
 
 type Props = {
-  sessions: SessionMeta[];
+  /** One per turn of each session. */
+  sessions: Roll[];
   selected: string | null;
   source: Source;
-  onSelect: (sessionId: string) => void;
+  /** Called with the roll's key. */
+  onSelect: (key: string) => void;
   onVerified: () => void;
   /** Shown above the rolls (the switch between records, and its totals). */
   top?: ReactNode;
@@ -24,9 +26,9 @@ export function SessionList({ sessions, selected, source, onSelect, onVerified, 
       <ul>
         {sessions.map((meta) => (
           <SessionSpool
-            key={meta.sessionId}
+            key={meta.key}
             meta={meta}
-            selected={meta.sessionId === selected}
+            selected={meta.key === selected}
             source={source}
             onSelect={onSelect}
             onVerified={onVerified}

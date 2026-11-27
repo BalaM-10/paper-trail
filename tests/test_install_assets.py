@@ -18,6 +18,7 @@ HOOK_FILES = [
     "record-file-delete.json",
     "witness-session-start.json",
     "witness-stop.json",
+    "witness-turn-start.json",
     "record.py",
     "witness.py",
 ]

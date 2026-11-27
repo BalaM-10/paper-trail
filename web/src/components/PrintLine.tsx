@@ -57,8 +57,10 @@ export const PrintLine = memo(function PrintLine({ entry, visible, isNext, selec
   }
 
   const verdict = entry.kind === "verdict" ? String(entry.data.verdict) : null;
+  const between = entry.kind === "witness" && entry.data.event === "between_turns";
   const classes = [
     "print-line",
+    between ? "print-line--between" : "",
     verdict ? "print-line--stamped" : "",
     overall ? "print-line--overall" : "",
     synthetic ? "print-line--note" : "",

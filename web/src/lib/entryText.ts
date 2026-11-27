@@ -49,6 +49,27 @@ export function verdictSentence(d: Record<string, unknown>): string {
   }
 }
 
+/**
+ * What changed between two turns, outside the agent. After a turn that never
+ * stopped, some of it may be the agent's, and the line says so.
+ */
+export function betweenTurnsText(d: Record<string, unknown>): string {
+  const diff = (d.diff ?? {}) as Record<string, unknown>;
+  const groups: [string, string[]][] = [
+    ["created", listOf(diff.created)],
+    ["changed", listOf(diff.modified)],
+    ["deleted", listOf(diff.deleted)],
+  ];
+  const listing =
+    groups
+      .filter(([, files]) => files.length > 0)
+      .map(([label, files]) => `${label} ${files.join(", ")}`)
+      .join("; ") || "no changes";
+  return d.unfinished === true
+    ? `Since the unfinished turn before this one: ${listing}. The agent may have made some of these changes.`
+    : `Between turns, outside the agent: ${listing}.`;
+}
+
 /** The last line of a checked statement. */
 export function overallSentence(verdict: unknown): string {
   switch (verdict) {
@@ -86,6 +107,8 @@ export function entryText(entry: Entry): string {
   switch (entry.kind) {
     case "witness": {
       if (d.event === "start") return "Witness took a snapshot of the project.";
+      if (d.event === "turn") return "Witness took a snapshot of the project at the start of this turn.";
+      if (d.event === "between_turns") return betweenTurnsText(d);
       const diff = (d.diff ?? {}) as Record<string, unknown>;
       const groups: [string, string[]][] = [
         ["Created", listOf(diff.created)],
@@ -96,7 +119,10 @@ export function entryText(entry: Entry): string {
         .filter(([, files]) => files.length > 0)
         .map(([label, files]) => `${label}: ${files.join(", ")}.`);
       const summary = parts.length > 0 ? parts.join(" ") : "No changes.";
-      return `Witness compared the project to the earlier snapshot. ${summary}`;
+      const since = String(d.baseline ?? "").startsWith("turn:")
+        ? "the snapshot from the start of this turn"
+        : "the earlier snapshot";
+      return `Witness compared the project to ${since}. ${summary}`;
     }
 
     case "tool": {

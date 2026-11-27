@@ -161,7 +161,9 @@ describe("a session where the agent said nothing", () => {
     expect(report).toHaveTextContent("Changes the witness saw:");
     expect(report).toHaveTextContent("Overall: the agent changed files and said nothing. (NO STATEMENT)");
     const paragraphs = report.querySelectorAll("p");
-    expect(paragraphs[paragraphs.length - 1]).toHaveTextContent(/^Fingerprint of the record: [0-9a-f]{64} \(19 lines\)$/);
+    expect(paragraphs[paragraphs.length - 1]).toHaveTextContent(
+      new RegExp(`^Fingerprint of the record: [0-9a-f]{64} \\(${demoEntries.length} lines\\)$`),
+    );
   });
 });
 

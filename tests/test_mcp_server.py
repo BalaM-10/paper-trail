@@ -307,3 +307,35 @@ def test_print_session_errors_are_one_plain_line(demo_root, sid):
     text = handle_print_session(demo_root, sid)
     assert text.startswith("Error: ")
     assert "\n" not in text.rstrip("\n")
+
+
+# --- one roll per turn (paper-trail-turns R2.7) ----------------------------
+
+def test_list_sessions_has_one_item_per_turn(demo_root):
+    items = handle_list_sessions(demo_root)
+    d = [s for s in items if s["session_id"] == "demo-session-d"]
+    assert [(s["turn"], s["turns"], s["title"], s["overall_verdict"], s["has_statement"]) for s in d] == [
+        (1, 2, "Wrote the plan.", "SUPPORTED", True),
+        (2, 2, "Cleared two drafts.", "SUPPORTED", True),
+    ]
+    assert [s["entry_count"] for s in d] == [7, 8]
+    assert [(s["session_id"], s["turn"], s["turns"]) for s in items if s["session_id"] != "demo-session-d"] == [
+        (SESSION_A, 1, 1), (SESSION_B, 1, 1), (SESSION_C, 1, 1),
+    ]
+    assert [s["title"] for s in items if s["session_id"] == SESSION_C] == ["No statement written"]
+
+
+def test_get_entries_can_return_one_turn_with_its_real_line_numbers(demo_root):
+    whole = handle_get_entries(demo_root, "demo-session-d")
+    second = handle_get_entries(demo_root, "demo-session-d", 2)
+    assert [e["seq"] for e in second] == list(range(27, 35))
+    assert [e["seq"] for e in handle_get_entries(demo_root, "demo-session-d", 1)] == list(range(20, 27))
+    assert second == [e for e in whole if e["seq"] >= 27]
+    assert handle_get_entries(demo_root, "demo-session-d", 3) == []
+    assert handle_get_entries(demo_root, "demo-session-d", 0) == []
+    assert handle_get_entries(demo_root, "nope", 1) == []
+
+
+def test_print_session_has_a_report_per_turn(demo_root):
+    text = handle_print_session(demo_root, "demo-session-d")
+    assert "Turn: 1 of 2" in text and "Turn: 2 of 2" in text

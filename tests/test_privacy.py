@@ -1,5 +1,6 @@
 """Tests for papertrail/privacy.py and for what the recorder lets into the record."""
 
+import itertools
 import json
 import re
 import string
@@ -345,3 +346,94 @@ def test_the_project_folder_is_derived_from_the_record_not_the_working_folder(tm
     entry = ledger.append(path, "s", "tool", {"cwd": str(tmp_path), "p": str(tmp_path / "src" / "a.py")})
     assert entry["data"]["cwd"] == "."
     assert entry["data"]["p"].replace("\\", "/") == "./src/a.py"
+
+
+# ---------------------------------------------------------------------------
+# The project folder and the home folder before punctuation (paper-trail-turns R4)
+# ---------------------------------------------------------------------------
+
+ENDINGS = [";", ",", ")", "]", "}", "|", ":", "!", "?", "'", '"', "/", "\\", " ", "\n", "\t", ">", "&", "", "."]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        (r"cd C:\work\proj; ls", "cd .; ls"),
+        (r"cd C:\work\proj;ls", "cd .;ls"),
+        (r"cd 'C:\work\proj'; python x.py", "cd '.'; python x.py"),
+        ('cd "C:\\work\\proj"; python x.py', 'cd "."; python x.py'),
+        (r"cd C:\work\proj && dir", "cd . && dir"),
+        (r"(C:\work\proj)", "(.)"),
+        (r"[C:\work\proj]", "[.]"),
+        (r"a,C:/work/proj,b", "a,.,b"),
+        (r"x | C:\WORK\PROJ|y", "x | .|y"),
+        (r"C:\work\proj.", ".."),
+        (r"in C:\work\proj. Then", "in .. Then"),
+        (r"cd C:\Users\alice; ls", "cd ~; ls"),
+        (r"(C:\Users\alice)", "(~)"),
+        (r"cd C:\Users\alice;cd C:\work\proj;ls", "cd ~;cd .;ls"),
+        (r"cd C:\\work\\proj\"; ls", r"cd .\"; ls"),
+        # a longer or different name is not the project folder
+        (r"cd C:\work\proj-two; ls", "cd [path]/proj-two; ls"),
+        (r"cd C:\work\proj.old; ls", "cd [path]/proj.old; ls"),
+        (r"cd C:\work\proj2; ls", "cd [path]/proj2; ls"),
+        (r"cd C:\work\project; ls", "cd [path]/project; ls"),
+        # not in the middle of a word
+        (r"xC:\work\proj", "xC:\\work\\proj"),
+    ],
+)
+def test_the_project_and_home_folder_before_punctuation(text, expected):
+    got = clean(text)
+    assert got == expected
+    assert find(got, TERMS) == []
+
+
+def test_the_reported_case_cd_then_semicolon():
+    command = r"cd C:\work\proj; python sample/cleanup.py"
+    assert clean(command) == "cd .; python sample/cleanup.py"
+    assert "[path]" not in clean(command)
+
+
+@pytest.mark.parametrize("posix_root", ["/home/me/proj", "/srv/app"])
+def test_a_posix_project_folder_before_punctuation(posix_root):
+    for end in [";", ",", ")", "]", "'", '"', " ", ""]:
+        text = f"cd {posix_root}{end} ls"
+        assert scrub(text, Path(posix_root), Path("/home/me"), TERMS) == f"cd .{end} ls"
+    # a longer name is not the project folder; under the home folder it is still ~/...
+    two = scrub(f"cd {posix_root}-two; ls", Path(posix_root), Path("/home/me"), TERMS)
+    assert not two.startswith("cd .;") and "-two; ls" in two
+    assert scrub("see /home/me;", Path("/srv/app"), Path("/home/me"), TERMS) == "see ~;"
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    ending=st.sampled_from(ENDINGS),
+    folder=st.sampled_from(["project", "home"]),
+    sep=st.sampled_from(["\\", "/", "\\\\", "\\\\\\\\"]),
+    case=st.lists(st.booleans(), min_size=1, max_size=40),
+    lead=st.sampled_from(["", "cd ", "x=", "(", "'", '"', "echo ", "\n"]),
+    tail=st.text(alphabet=string.ascii_letters + " ", max_size=8),
+)
+def test_property_the_folders_are_dot_and_tilde_before_any_punctuation(ending, folder, sep, case, lead, tail):
+    parts = ["C:", "work", "proj"] if folder == "project" else ["C:", "Users", "alice"]
+    flags = itertools.cycle(case)
+    written = sep.join("".join(c.upper() if next(flags) else c.lower() for c in part) for part in parts)
+    # a full stop or a name character straight after would be a different folder, so only the
+    # characters that end a name are tried; "." and "nothing" are followed by a space so they end the name
+    follow = ending + (" " if ending in (".", "") else "")
+    text = f"{lead}{written}{follow}{tail}"
+    expected = f"{lead}{'.' if folder == 'project' else '~'}{follow}{tail}"
+    assert clean(text) == expected, (text, clean(text))
+    assert find(clean(text), TERMS) == []
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    extra=st.text(alphabet=string.ascii_letters + string.digits + "-_~", min_size=1, max_size=5),
+    folder=st.sampled_from([r"C:\work\proj", r"C:\Users\alice"]),
+)
+def test_property_a_longer_name_is_never_the_project_or_home_folder(extra, folder):
+    text = f"cd {folder}{extra}; ls"
+    got = clean(text)
+    assert not got.startswith("cd .;") and not got.startswith("cd ~;")
+    assert find(got, TERMS) == []

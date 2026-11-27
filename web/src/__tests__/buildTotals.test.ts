@@ -5,12 +5,24 @@ import { makeRecord } from "./buildRecord";
 import { demoEntries } from "./demo";
 
 describe("what the record adds up to", () => {
-  it("counts the demo: three sessions, two statements checked, one matched, one said nothing", () => {
+  it("counts the demo: four sessions in five turns, three statements checked, two matched, one said nothing", () => {
     const totals = buildTotals(demoEntries);
-    expect(totals).toEqual({ sessions: 3, lines: 19, checked: 2, matched: 1, silent: 1, unchecked: 0 });
+    expect(totals).toEqual({ sessions: 4, turns: 5, lines: 34, checked: 4, matched: 3, silent: 1, unchecked: 0 });
     expect(totalsText(totals)).toBe(
-      "3 sessions, 19 lines. 2 statements checked, 1 matched the evidence. 1 session changed files and said nothing.",
+      "4 sessions, 5 turns, 34 lines. 4 statements checked, 3 matched the evidence. 1 session changed files and said nothing.",
     );
+  });
+
+  it("says turns only when a session holds more than one", async () => {
+    const { entries } = await makeRecord([
+      { id: "a", tools: 1, outcome: "supported" },
+      { id: "b", tools: 1, outcome: "supported" },
+    ]);
+    const totals = buildTotals(entries);
+    expect([totals.sessions, totals.turns]).toEqual([2, 2]);
+    expect(totalsText(totals)).toMatch(/^2 sessions, \d+ lines\./);
+    expect(totalsText({ ...totals, sessions: 1, turns: 7 })).toMatch(/^1 session, 7 turns, \d+ lines\./);
+    expect(totalsText({ ...totals, sessions: 1, turns: 1 })).toMatch(/^1 session, \d+ lines\./);
   });
 
   it("counts statements that were written and never checked", async () => {
@@ -29,14 +41,14 @@ describe("what the record adds up to", () => {
       { seq: 1, ts: "", session_id: "a", kind: "witness", data: { event: "start" }, prev_hash: "", hash: "h" },
     ];
     expect(totalsText(buildTotals(one))).toBe("1 session, 1 line. 0 statements checked.");
-    const text = totalsText({ sessions: 1, lines: 2, checked: 1, matched: 0, silent: 1, unchecked: 1 });
+    const text = totalsText({ sessions: 1, turns: 1, lines: 2, checked: 1, matched: 0, silent: 1, unchecked: 1 });
     expect(text).toBe(
       "1 session, 2 lines. 1 statement checked, 0 matched the evidence. 1 session changed files and said nothing. 1 statement was written and never checked.",
     );
   });
 
   it("leaves out the parts that are zero, except the statements checked", () => {
-    const text = totalsText({ sessions: 4, lines: 40, checked: 0, matched: 0, silent: 0, unchecked: 0 });
+    const text = totalsText({ sessions: 4, turns: 4, lines: 40, checked: 0, matched: 0, silent: 0, unchecked: 0 });
     expect(text).toBe("4 sessions, 40 lines. 0 statements checked.");
     expect(text).not.toMatch(/nothing|never/);
   });
@@ -59,7 +71,7 @@ describe("what the record adds up to", () => {
   });
 
   it("uses no word the page may not show", () => {
-    const text = totalsText({ sessions: 5, lines: 600, checked: 3, matched: 2, silent: 2, unchecked: 3 });
+    const text = totalsText({ sessions: 5, turns: 9, lines: 600, checked: 3, matched: 2, silent: 2, unchecked: 3 });
     expect(text).not.toMatch(/\b(hash|chain|ledger|entry|entries|seq|jsonl|sha-?256|canonical|hex)\b/i);
   });
 });

@@ -19,15 +19,19 @@ import { useChainCheck } from "./hooks/useChainCheck";
 import { POLL_MS, useEntries, type View } from "./hooks/useEntries";
 import { useFreshLine } from "./hooks/useFreshLine";
 import { useReplay } from "./hooks/useReplay";
+import type { Entry } from "./lib/chainCheck";
 import { fingerprintText } from "./lib/entryText";
-import { buildSessionMeta } from "./lib/sessionMeta";
+import { splitRolls, turnLabel } from "./lib/rolls";
 import { synthesiseUndeclared } from "./lib/synthesiseUndeclared";
+
+const NO_ENTRIES: Entry[] = [];
 
 export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {}) {
   const [view, setView] = useState<View>("demo");
   const { entries, source, buildInfo, tamper, restore, isTampered, forceRefresh } = useEntries(POLL_MS, view);
   const { result: chain, unavailable } = useChainCheck(entries);
-  const sessions = useMemo(() => buildSessionMeta(entries), [entries]);
+  // One roll of paper per turn of each session.
+  const rolls = useMemo(() => splitRolls(entries), [entries]);
 
   const [picked, setPicked] = useState<string | null>(null);
   const [tamperTarget, setTamperTarget] = useState<number | null>(null);
@@ -35,16 +39,13 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
   // The static demo opens on the interesting session: the one that is CONTRADICTED.
   const demoDefault =
     source === "demo" || source === "build"
-      ? (sessions.find((s) => s.overallVerdict === "CONTRADICTED") ?? sessions[0])?.sessionId ?? null
+      ? (rolls.find((r) => r.overallVerdict === "CONTRADICTED") ?? rolls[0])?.key ?? null
       : null;
   const selected =
-    picked !== null && sessions.some((s) => s.sessionId === picked) ? picked : demoDefault;
-  const selectedMeta = sessions.find((s) => s.sessionId === selected) ?? null;
+    picked !== null && rolls.some((r) => r.key === picked) ? picked : demoDefault;
+  const selectedRoll = rolls.find((r) => r.key === selected) ?? null;
 
-  const sessionEntries = useMemo(
-    () => entries.filter((e) => e.session_id === selected),
-    [entries, selected],
-  );
+  const sessionEntries = selectedRoll ? selectedRoll.entries : NO_ENTRIES;
   const lines = useMemo(() => synthesiseUndeclared(sessionEntries), [sessionEntries]);
   const replay = useReplay(lines.length, selected, source === "api");
 
@@ -56,8 +57,8 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
   const torn = tearIndex >= 0;
   const freshIndex = useFreshLine(replay.cursor, torn);
 
-  function selectSession(sessionId: string) {
-    setPicked(sessionId);
+  function selectRoll(key: string) {
+    setPicked(key);
     setTamperTarget(null);
   }
 
@@ -157,10 +158,10 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
           <Header />
 
           <SessionList
-            sessions={sessions}
+            sessions={rolls}
             selected={selected}
             source={source}
-            onSelect={selectSession}
+            onSelect={selectRoll}
             onVerified={forceRefresh}
             top={
               <>
@@ -200,7 +201,7 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
               brokenAt={brokenAt}
               tampered={isTampered}
               tamperTarget={tamperTarget}
-              overallVerdict={selectedMeta?.overallVerdict ?? null}
+              overallVerdict={selectedRoll?.overallVerdict ?? null}
             />
 
             <Printer
@@ -246,10 +247,11 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
         </div>
       </div>
 
-      {selected && selectedMeta && (
+      {selectedRoll && (
         <PrintReport
-          sessionId={selected}
-          title={selectedMeta.title}
+          sessionId={selectedRoll.sessionId}
+          turn={turnLabel(selectedRoll)}
+          title={selectedRoll.title}
           chain={chain}
           lines={lines}
           fingerprint={fingerprintText(entries)}

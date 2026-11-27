@@ -1,4 +1,11 @@
-"""Session start/stop logic: snapshot, diff, statement promotion."""
+"""Session start, turn start and stop: snapshots, diffs, statement promotion.
+
+A session is one chat; Kiro keeps its id across many replies. A turn is one reply:
+it starts when the person sends a prompt (`on_turn_start`) and ends when the agent
+stops (`on_stop`). The stop compares the project with the snapshot taken at the
+start of the turn, so what a person changed between two replies is not blamed on
+the agent. That change is recorded on its own, as "between turns".
+"""
 
 import json
 from datetime import datetime, timezone
@@ -20,6 +27,58 @@ def on_start(payload: dict, root: Path, home: Path) -> dict:
                          {"event": "start", "snapshot": snap})
 
 
+_SNAPSHOT_EVENTS = ("start", "turn", "stop")
+
+
+def _latest_turn(session_entries: list[dict]) -> dict | None:
+    """The newest witness/turn record of the session, or None."""
+    found = None
+    for e in session_entries:
+        if e["kind"] == "witness" and e["data"].get("event") == "turn":
+            found = e
+    return found
+
+
+def on_turn_start(payload: dict, root: Path, home: Path) -> dict:
+    """
+    The person has sent a prompt. Take a snapshot and append a witness/turn record.
+    If the session already has a snapshot and the project differs from it, also append
+    a witness/between_turns record: what changed since then, outside the agent.
+
+    The compared-from snapshot is the latest one in the session. When that is the start
+    of a turn that never stopped (interrupted, or a prompt Kiro sent itself) the record
+    says `unfinished`, because some of those changes may be the agent's.
+
+    The text of the prompt is never read. Returns the witness/turn record.
+    """
+    session_id: str = payload.get("session_id", "unknown")
+    ledger_path = root / ".papertrail" / "ledger.jsonl"
+    snap = witness.snapshot(root)
+    earlier = None
+    for e in ledger.read(ledger_path):
+        if (
+            e["session_id"] == session_id
+            and e["kind"] == "witness"
+            and e["data"].get("event") in _SNAPSHOT_EVENTS
+            and "snapshot" in e["data"]
+        ):
+            earlier = e
+    turn_entry = ledger.append(ledger_path, session_id, "witness", {"event": "turn", "snapshot": snap})
+    if earlier is not None:
+        diff = witness.diff(earlier["data"]["snapshot"], snap)
+        if any(diff.values()):
+            event = earlier["data"]["event"]
+            ledger.append(ledger_path, session_id, "witness", {
+                "event":        "between_turns",
+                "diff":         diff,
+                "baseline":     f"{event}:{earlier['seq']}",
+                "witness_seq":  turn_entry["seq"],
+                "evidence_seq": [earlier["seq"], turn_entry["seq"]],
+                "unfinished":   event == "turn",
+            })
+    return turn_entry
+
+
 def on_stop(payload: dict, root: Path, home: Path) -> dict:
     """
     Determine diff baseline, compute diff, append witness/stop entry, and
@@ -34,32 +93,41 @@ def on_stop(payload: dict, root: Path, home: Path) -> dict:
     snap_new = witness.snapshot(root)
     entries = ledger.read(ledger_path)
 
-    # --- 1. Determine diff baseline from statement entries, not by position ---
+    # --- 1. Determine diff baseline ---
+    # Inside the current turn (everything from its start on): the stop a statement was
+    # written at, else the snapshot at the start of the turn. A session with no turn
+    # start (the turn hook is not installed, or did not fire) works as it always did:
+    # the stop a statement points at, else the session start.
     session_entries = [e for e in entries if e["session_id"] == session_id]
-
+    turn_entry = _latest_turn(session_entries)
+    scope = (
+        [e for e in session_entries if e["seq"] >= turn_entry["seq"]]
+        if turn_entry is not None
+        else session_entries
+    )
     witness_seqs_from_stmts = [
         e["data"]["witness_seq"]
-        for e in session_entries
+        for e in scope
         if e["kind"] == "statement" and "witness_seq" in e.get("data", {})
     ]
-
     baseline_snap = None
     baseline_label = "none"
-
     if witness_seqs_from_stmts:
         ref_seq = max(witness_seqs_from_stmts)
-        for e in session_entries:
+        for e in scope:
             if e["seq"] == ref_seq and e["kind"] == "witness":
                 baseline_snap = e["data"]["snapshot"]
                 baseline_label = f"prev_stop_seq:{ref_seq}"
                 break
+    elif turn_entry is not None:
+        baseline_snap = turn_entry["data"]["snapshot"]
+        baseline_label = f"turn:{turn_entry['seq']}"
     else:
         for e in session_entries:
             if e["kind"] == "witness" and e["data"].get("event") == "start":
                 baseline_snap = e["data"]["snapshot"]
                 baseline_label = "start"
                 break
-
     # --- 2. Compute diff ---
     if baseline_snap is not None:
         diff = witness.diff(baseline_snap, snap_new)
@@ -116,7 +184,7 @@ def on_stop(payload: dict, root: Path, home: Path) -> dict:
 
     # --- 5. Changes but no statement: say so ---
     if not promoted:
-        _record_no_statement(ledger_path, session_id, stop_entry, diff, entries)
+        _record_no_statement(ledger_path, session_id, stop_entry, diff, scope)
 
     return stop_entry
 
@@ -152,9 +220,11 @@ def _record_no_statement(
     Append a NO_STATEMENT overall verdict listing the witness diff as undeclared.
 
     Nothing is recorded when nothing changed (or there was no baseline), or when
-    the session's latest overall verdict is already this same NO_STATEMENT.
-    `entries` is what on_stop read before it appended anything; the records
-    on_stop appends itself are never overall verdicts, so it is still exact.
+    the turn's latest overall verdict is already this same NO_STATEMENT.
+    `entries` are the session's records of the current turn, as on_stop read them
+    before it appended anything. The same change in a later turn is a new fact, so
+    it is not compared with an earlier turn. The records on_stop appends itself are
+    never overall verdicts, so the list is still exact.
     """
     undeclared = undeclared_from_diff(diff)
     if not undeclared:

@@ -460,3 +460,26 @@ describe("tear off report (print)", () => {
     expect(printCss).toMatch(/font-family:\s*"Courier New", Courier, monospace/);
   });
 });
+
+
+describe("the between-turns line", () => {
+  it("is a quiet grey italic note, in the same grey the line numbers use", () => {
+    const sel = ".print-line--between .print-line__text";
+    expect(valueOf(paperCss, sel, "color")).toBe("var(--muted)");
+    expect(valueOf(paperCss, sel, "font-style")).toBe("italic");
+  });
+
+  it("is grey on both the white and the green band of the paper, with enough contrast to read", () => {
+    expect(contrast(v.muted, v["paper-bg"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(v.muted, v.band)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("is never drawn like the agent's own lines: no red, no stamp colour", () => {
+    const block = blocks(paperCss, ".print-line--between .print-line__text").join(";");
+    expect(block).not.toMatch(/#8b1a1a|#c0262d|var\(--red\)/i);
+  });
+
+  it("is italic on the printed report too", () => {
+    expect(valueOf(printCss, ".print-between", "font-style")).toBe("italic");
+  });
+});

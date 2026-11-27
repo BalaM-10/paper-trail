@@ -327,7 +327,7 @@ def test_doctor_on_a_fresh_setup_has_nothing_missing(tmp_path):
     install.init(tmp_path)
     checks = install.doctor(tmp_path, _probe({"papertrail", "mcp"}))
     assert _levels(checks) == ["ok"] * len(checks)
-    assert len(checks) == 6 + 1 + 1 + 1 + 2  # hooks, steering, mcp, gitignore, two imports
+    assert len(checks) == len(HOOK_FILES) + 1 + 1 + 1 + 2  # hook files, steering, mcp, gitignore, two imports
     assert install.healthy(checks)
 
 
@@ -474,3 +474,49 @@ def test_cli_doctor_defaults_to_the_current_folder(tmp_path):
     install.init(tmp_path)
     result = _cli(["doctor"], tmp_path)
     assert "OK      .kiro/hooks/record.py is in place" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The turn-start hook (paper-trail-turns R5.1)
+# ---------------------------------------------------------------------------
+
+def test_init_installs_the_turn_start_hook(tmp_path):
+    install.init(tmp_path)
+    hook = json.loads((tmp_path / ".kiro" / "hooks" / "witness-turn-start.json").read_text(encoding="utf-8"))
+    (entry,) = hook["hooks"]
+    assert entry["trigger"] == "UserPromptSubmit"
+    assert entry["action"] == {"type": "command", "command": "python .kiro/hooks/witness.py turn"}
+    assert "matcher" not in entry  # every prompt starts a turn
+    assert len(HOOK_FILES) == 7 and sum(name.endswith(".json") for name in HOOK_FILES) == 5
+
+
+def test_the_installed_witness_script_knows_the_turn_event(tmp_path):
+    install.init(tmp_path)
+    script = (tmp_path / ".kiro" / "hooks" / "witness.py").read_text(encoding="utf-8")
+    assert '"turn": "on_turn_start"' in script
+
+
+def test_doctor_names_a_missing_turn_start_hook(tmp_path):
+    install.init(tmp_path)
+    (tmp_path / ".kiro" / "hooks" / "witness-turn-start.json").unlink()
+    checks = install.doctor(tmp_path, _probe({"papertrail", "mcp"}))
+    missing = [c for c in checks if c.level == "missing"]
+    assert [c.label for c in missing] == [".kiro/hooks/witness-turn-start.json is missing"]
+    assert "python -m papertrail init" in missing[0].fix
+    assert not install.healthy(checks)
+
+
+def test_doctor_warns_about_a_changed_turn_start_hook(tmp_path):
+    install.init(tmp_path)
+    (tmp_path / ".kiro" / "hooks" / "witness-turn-start.json").write_text("{}", encoding="utf-8")
+    checks = install.doctor(tmp_path, _probe({"papertrail", "mcp"}))
+    assert [c.level for c in checks if "witness-turn-start" in c.label] == ["warn"]
+    assert install.healthy(checks)
+
+
+def test_a_project_set_up_before_this_hook_existed_gets_only_the_new_file(tmp_path):
+    install.init(tmp_path)
+    (tmp_path / ".kiro" / "hooks" / "witness-turn-start.json").unlink()
+    steps = _statuses(install.init(tmp_path))
+    assert steps[".kiro/hooks/witness-turn-start.json"] == "created"
+    assert {s for name, s in steps.items() if name != ".kiro/hooks/witness-turn-start.json"} == {"unchanged"}

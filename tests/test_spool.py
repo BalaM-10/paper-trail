@@ -18,7 +18,7 @@ DEMO = PROJECT_ROOT / "web" / "public" / "demo" / "ledger.jsonl"
 
 
 def _project(tmp_path: Path) -> Path:
-    """A project folder holding a copy of the demo record (three sessions)."""
+    """A project folder holding a copy of the demo record (four sessions)."""
     (tmp_path / ".papertrail").mkdir()
     shutil.copyfile(DEMO, tmp_path / ".papertrail" / "ledger.jsonl")
     return tmp_path
@@ -114,10 +114,10 @@ def test_session_c_has_no_statement(tmp_path):
 def test_last_line_is_the_final_fingerprint_and_count(tmp_path):
     root = _project(tmp_path)
     entries = ledger.read(root / ".papertrail" / "ledger.jsonl")
-    assert len(entries) == 19
+    assert len(entries) == 34
     for sid in ("demo-session-a", "demo-session-c"):
         last = _lines(spool.render_session(root, sid))[-1]
-        assert last == f"{entries[-1]['hash']} (19 lines)"
+        assert last == f"{entries[-1]['hash']} (34 lines)"
 
 
 def test_a_tampered_record_shows_where_the_paper_tore(tmp_path):
@@ -229,3 +229,68 @@ def test_cli_print_without_arguments_shows_usage(tmp_path):
     r = _cli(["print"], root)
     assert r.returncode == 1
     assert "Usage: python -m papertrail print <session_id>" in r.stderr
+
+
+# ---------------------------------------------------------------------------
+# One roll per turn (paper-trail-turns R2.8, R2.9)
+# ---------------------------------------------------------------------------
+
+def test_a_session_with_two_turns_prints_two_reports_separated_by_a_tear_line(tmp_path):
+    root = _project(tmp_path)
+    lines = _lines(spool.render_session(root, "demo-session-d"))
+    assert lines.count("PAPER TRAIL - evidence report") == 2
+    assert lines.count(spool.TEAR) == 1
+    first, second = "\n".join(lines).split(spool.TEAR + "\n")
+    assert "Turn: 1 of 2\nStatement: Wrote the plan.\nPaper intact" in first
+    assert "Turn: 2 of 2\nStatement: Cleared two drafts.\nPaper intact" in second
+    assert "Session: demo-session-d" in first and "Session: demo-session-d" in second
+    assert all(len(line) <= 80 for line in lines)
+
+
+def test_each_roll_has_its_own_lines_with_the_real_line_numbers(tmp_path):
+    root = _project(tmp_path)
+    text = spool.render_session(root, "demo-session-d")
+    first, second = text.split(spool.TEAR + "\n")
+
+    def numbers(block):
+        return [int(m.group(1)) for m in re.finditer(r"^\s*(\d+)  \S", block, re.M)]
+
+    assert numbers(first) == list(range(20, 27))
+    assert numbers(second) == list(range(27, 35))
+    assert " 28  Between turns, outside the agent: deleted drafts/old-a.txt," in second  # wraps at 80 columns
+    assert "Between turns, outside the agent: deleted drafts/old-a.txt, drafts/old-b.txt." in " ".join(second.split())
+    assert "Between turns" not in first
+    assert "!" not in re.findall(r"^\s*(!)  ", text, re.M)  # nothing of the agent's was left out
+
+
+def test_the_between_turns_line_is_plain_and_has_no_verdict_word(tmp_path):
+    root = _project(tmp_path)
+    second = spool.render_session(root, "demo-session-d").split(spool.TEAR + "\n")[1]
+    (line,) = [l for l in _lines(second) if "Between turns" in l]
+    assert not re.search(r"SUPPORTED|CONTRADICTED|UNVERIFIED|NO STATEMENT", line)
+
+
+def test_only_the_last_line_is_the_fingerprint_of_the_whole_record(tmp_path):
+    root = _project(tmp_path)
+    text = spool.render_session(root, "demo-session-d")
+    entries = ledger.read(root / ".papertrail" / "ledger.jsonl")
+    assert text.count("Fingerprint of the record:") == 1
+    assert _lines(text)[-1] == f"{entries[-1]['hash']} (34 lines)"
+
+
+def test_a_session_with_one_roll_prints_as_it_always_did(tmp_path):
+    root = _project(tmp_path)
+    text = spool.render_session(root, "demo-session-b")
+    assert "Turn:" not in text and spool.TEAR not in text
+    assert text.count("PAPER TRAIL - evidence report") == 1
+
+
+def test_a_torn_record_says_so_in_every_roll(tmp_path):
+    root = _project(tmp_path)
+    path = root / ".papertrail" / "ledger.jsonl"
+    rows = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines()]
+    rows[21]["data"]["tool_input"]["path"] = "drafts/other.md"
+    path.write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n", encoding="utf-8")
+    text = spool.render_session(root, "demo-session-d")
+    assert text.count("Paper torn at line") == 2
+    assert "Paper intact" not in text

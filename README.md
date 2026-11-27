@@ -11,17 +11,19 @@ An agent finishes a task and tells you what it did. Normally you take its word
 for it. Paper Trail does not.
 
 1. **Record.** Kiro hooks write down every tool call the agent makes.
-2. **Witness.** When a session starts and when it stops, Paper Trail takes its
-   own snapshot of the project folder. The difference between the two is what
-   really changed. The witness trusts neither the agent nor the record, so it
-   also sees what a shell command did behind the agent's back.
+2. **Witness.** When you send a prompt and when the agent stops, Paper Trail
+   takes its own snapshot of the project folder. The difference between the two
+   is what really changed in that turn. The witness trusts neither the agent nor
+   the record, so it also sees what a shell command did behind the agent's back.
+   What you changed yourself between two replies is written down as "between
+   turns, outside the agent" and is never blamed on the agent.
 3. **Statement.** The agent writes a short statement: files read, created,
    changed and deleted.
 4. **Verdict.** Each line of the statement is checked against the witness and
    the record. Anything the witness saw that the statement leaves out is listed
    as a change the agent never mentioned.
 5. **Printout.** A web page prints the record one line at a time and stamps the
-   verdicts. Each line carries a fingerprint that depends on the line before it,
+   verdicts. Each turn is its own roll of paper, titled by its statement. Each line carries a fingerprint that depends on the line before it,
    so editing any line tears the paper at that point.
 
 The idea comes from an old security habit: sending audit logs to a line printer,
@@ -37,8 +39,8 @@ python -m papertrail init C:\path\to\your\project
 ```
 
 The first line installs Paper Trail once, from this folder. The second sets up
-one project. It copies the four hook files and two hook scripts into
-`.kiro/hooks`, the statement rule into `.kiro/steering`, adds the `paper-trail`
+one project. It copies the five hook files (record a tool call, record a file delete,
+session start, turn start, stop) and two hook scripts into `.kiro/hooks`, the statement rule into `.kiro/steering`, adds the `paper-trail`
 server to `.kiro/settings/mcp.json` (your other servers stay as they are) and
 adds `.papertrail/` to `.gitignore`.
 
@@ -49,6 +51,12 @@ adds `.papertrail/` to `.gitignore`.
   It says what is missing and how to fix it.
 
 Start a Kiro session in that project. Records appear in `.papertrail/`.
+
+The turn-start hook runs on Kiro's `UserPromptSubmit` trigger, that is, when you
+send a prompt. It prints nothing and always exits with status 0, so it never
+blocks a prompt and adds nothing to the agent's context. It does not read your
+prompt. A project set up before this hook existed gets it by running `init`
+again; only the new file is added.
 
 Kiro Powers can carry the MCP server and instructions, but not hooks or an
 always-on steering rule, so a Power does not replace `init`. See
@@ -72,15 +80,17 @@ deletes `sample/notes.txt`. The agent says it only cleared the cache. The
 witness saw the notes file go. The verdict is CONTRADICTED.
 
 1. Reset the sample project: `python sample/reset.py`
-2. Start a Kiro session in this folder. The witness takes a snapshot.
+2. Start a Kiro session in this folder and send a prompt. The witness takes a
+   snapshot when the session starts and another when the turn starts.
 3. Ask the agent to run `python sample/cleanup.py`, then to write its statement.
 4. When the session ends, the stop hook takes a second snapshot and keeps the
    statement. Check it: `python -m papertrail verify <session_id>`. The last line
    is `OVERALL: CONTRADICTED`.
 
 To see the printout without running anything, build the page (below) and open
-the "Demo" roll. It has three recorded sessions: SUPPORTED, CONTRADICTED and NO
-STATEMENT.
+the "Demo" roll. It has four recorded sessions: SUPPORTED, CONTRADICTED, NO
+STATEMENT, and one of two turns, where a person deleted two files between the
+turns and the second turn is still SUPPORTED.
 
 ## The web page
 
@@ -147,18 +157,20 @@ Paper Trail was built with Kiro, and it records its own building.
 - **Specs** (`.kiro/specs/`): `paper-trail-core` (recorder, witness, verifier),
   `paper-trail-printout` (API, MCP server, the page), `paper-trail-proof` (an
   honest sample bug, NO STATEMENT, the print file, CI), `paper-trail-install`
-  (init, doctor, pip, the build record) and `paper-trail-clean-record` (nothing
-  private in the record, statements checked by the stop hook, archive). Each has
-  requirements, a design and tasks.
+  (init, doctor, pip, the build record), `paper-trail-clean-record` (nothing
+  private in the record, statements checked by the stop hook, archive) and
+  `paper-trail-turns` (one roll per turn, and changes between turns kept out of
+  the agent's verdict). Each has requirements, a design and tasks.
 - **Hooks** (`.kiro/hooks/`): `record-post-tool-use.json` and
-  `record-file-delete.json` write the record; `witness-session-start.json` and
-  `witness-stop.json` take the two snapshots. They call `record.py` and
-  `witness.py`, which use only the standard library and never disturb the agent.
+  `record-file-delete.json` write the record; `witness-session-start.json`,
+  `witness-turn-start.json` (on `UserPromptSubmit`) and `witness-stop.json` take
+  the snapshots. They call `record.py` and `witness.py`, which use only the standard library and never disturb the agent.
 - **Steering** (`.kiro/steering/`): `product.md`, `tech.md` and `structure.md`
   hold the product, the stack and the layout. `statement.md` makes the agent
   write `.papertrail/statement.json` before it reports it is done.
-- **MCP server** (`papertrail/mcp_server.py`): five tools, `list_sessions`,
-  `get_entries`, `check_chain`, `verify_statement` and `print_session`, so the
+- **MCP server** (`papertrail/mcp_server.py`): five tools. `list_sessions` gives
+  one item per turn, `get_entries` can return one turn, and there are
+  also `check_chain`, `verify_statement` and `print_session`, so the
   agent can check its own work.
 - **Property-based tests** (Hypothesis): `tests/test_ledger.py` (the fingerprint
   chain), `tests/test_witness.py` (snapshots and differences) and

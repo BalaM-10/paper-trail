@@ -165,6 +165,9 @@ select:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* a date or "turn 2 of 3" is not split across two lines */
+.nobreak { white-space: nowrap; }
+
 .session-list__caption {
   margin: 0 0 0.5rem;
   font-size: 0.75rem;
@@ -619,6 +622,8 @@ select:focus-visible {
   text-shadow: 0 0 1px rgba(31, 42, 31, 0.45);
 }
 .print-line--stamped .print-line__text { padding-right: 9.8rem; }
+/* What a person changed between two turns: a quiet note, not the agent's. No stamp, no ring. */
+.print-line--between .print-line__text { color: var(--muted); font-style: italic; }
 .print-line--tamper-target { background: rgba(255, 221, 0, 0.45); }
 .print-line--empty { color: var(--muted); }
 

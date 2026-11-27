@@ -6,6 +6,8 @@ import { ChainStatus } from "./ChainStatus";
 
 type Props = {
   sessionId: string;
+  /** "turn 2 of 3" when the session has several turns, else null. */
+  turn: string | null;
   title: string;
   chain: ChainResult | null;
   /** The session's lines, including the made-up "not mentioned" lines. */
@@ -19,7 +21,7 @@ type Props = {
  * It lists everything, whether or not the replay has reached it, and ends
  * with the overall verdict.
  */
-export const PrintReport = memo(function PrintReport({ sessionId, title, chain, lines, fingerprint }: Props) {
+export const PrintReport = memo(function PrintReport({ sessionId, turn, title, chain, lines, fingerprint }: Props) {
   const verdictLines = lines.filter(
     (l) => l.kind === "verdict" && l.data.kind_detail !== "statement_overall",
   );
@@ -27,6 +29,7 @@ export const PrintReport = memo(function PrintReport({ sessionId, title, chain, 
   const overall = lines.filter(
     (l) => l.kind === "verdict" && l.data.kind_detail === "statement_overall",
   );
+  const between = lines.filter((l) => l.kind === "witness" && l.data.event === "between_turns");
   const last = overall[overall.length - 1];
   const silent = last !== undefined && last.data.verdict === "NO_STATEMENT";
 
@@ -34,10 +37,16 @@ export const PrintReport = memo(function PrintReport({ sessionId, title, chain, 
     <section className="print-report" aria-hidden="true">
       <h1>Paper Trail: evidence report</h1>
       <p>Session: {sessionId}</p>
+      {turn && <p>Turn: {turn.replace(/^turn /, "")}</p>}
       <p>Statement: {title}</p>
       <p className="print-chain-status">
         {chain ? <ChainStatus ok={chain.ok} brokenAt={chain.ok ? null : chain.brokenAt} /> : "Paper not checked"}
       </p>
+      {between.map((l) => (
+        <p key={l.seq} className="print-between">
+          {entryText(l)}
+        </p>
+      ))}
       {verdictLines.map((l) => (
         <p key={l.seq} className="print-verdict-line">
           {verdictWord(l.data.verdict)}: {entryText(l)}

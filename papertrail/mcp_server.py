@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 
 from papertrail import ledger as ledger_mod
-from papertrail import outcome, spool
+from papertrail import outcome, rolls, spool
 
 
 def _root() -> Path:
@@ -32,26 +32,39 @@ def _ledger_path(root: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 def handle_list_sessions(root: Path) -> list[dict]:
-    """One summary per session, in the order sessions first appear."""
-    sessions: dict[str, dict] = {}
-    for e in ledger_mod.read(_ledger_path(root)):
-        s = sessions.setdefault(e["session_id"], {
-            "session_id": e["session_id"],
-            "entry_count": 0,
-            "has_statement": False,
-            "overall_verdict": None,
-        })
-        s["entry_count"] += 1
-        if e["kind"] == "statement":
-            s["has_statement"] = True
-        if outcome.is_overall(e):
-            s["overall_verdict"] = e["data"]["verdict"]
-    return list(sessions.values())
+    """
+    One summary per roll, in the order sessions first appear. A roll is one turn of
+    a session (one reply of the agent), titled by its statement; a session with no
+    turn records is one roll. `turn` counts from 1 within the session, `turns` is
+    how many there are.
+    """
+    return [
+        {
+            "session_id": r.session_id,
+            "turn": r.number,
+            "turns": r.count,
+            "title": r.title,
+            "entry_count": len(r.entries),
+            "has_statement": r.has_statement,
+            "overall_verdict": r.overall,
+        }
+        for r in rolls.split(ledger_mod.read(_ledger_path(root)))
+    ]
 
 
-def handle_get_entries(root: Path, session_id: str) -> list[dict]:
-    """Every record of one session, in order. Empty for an unknown session."""
-    return [e for e in ledger_mod.read(_ledger_path(root)) if e["session_id"] == session_id]
+def handle_get_entries(root: Path, session_id: str, turn: int | None = None) -> list[dict]:
+    """
+    Every record of one session, in order, or (with `turn`) of one of its rolls.
+    Empty for an unknown session or turn. The records are exactly as written, so
+    line numbers are the real ones.
+    """
+    mine = [e for e in ledger_mod.read(_ledger_path(root)) if e["session_id"] == session_id]
+    if turn is None:
+        return mine
+    for roll in rolls.split_session(mine):
+        if roll.number == turn:
+            return list(roll.entries)
+    return []
 
 
 def handle_check_chain(root: Path) -> dict:
@@ -98,16 +111,18 @@ def build_server():
 
     @server.tool()
     def list_sessions() -> list[dict]:
-        """List every recorded session with its record count, whether it has a
-        statement, and its overall verdict (or null if not yet checked). A
-        session where the agent changed files and wrote no statement has the
-        verdict NO_STATEMENT."""
+        """List every recorded roll: one per turn (one reply of the agent) of each
+        session, with its turn number, how many turns the session has, its title
+        (the statement), its record count, whether it has a statement, and its
+        overall verdict (or null if not yet checked). A turn where the agent
+        changed files and wrote no statement has the verdict NO_STATEMENT."""
         return handle_list_sessions(_root())
 
     @server.tool()
-    def get_entries(session_id: str) -> list[dict]:
-        """Get every record of one session, in the order it was written."""
-        return handle_get_entries(_root(), session_id)
+    def get_entries(session_id: str, turn: int | None = None) -> list[dict]:
+        """Get every record of one session in the order it was written, or only
+        those of one turn (counted from 1, as list_sessions says)."""
+        return handle_get_entries(_root(), session_id, turn)
 
     @server.tool()
     def check_chain() -> dict:

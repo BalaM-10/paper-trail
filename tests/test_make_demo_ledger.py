@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from papertrail import ledger as ledger_mod
-from sample.make_demo_ledger import SESSION_A, SESSION_B, SESSION_C, generate
+from sample.make_demo_ledger import SESSION_A, SESSION_B, SESSION_C, SESSION_D, generate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 COMMITTED = PROJECT_ROOT / "web" / "public" / "demo" / "ledger.jsonl"
@@ -60,9 +60,9 @@ def test_chain_is_intact(demo):
     assert ledger_mod.verify_chain(out) == (True, None)
 
 
-def test_three_sessions_in_order(demo):
+def test_four_sessions_in_order(demo):
     _, entries = demo
-    assert list(dict.fromkeys(e["session_id"] for e in entries)) == [SESSION_A, SESSION_B, SESSION_C]
+    assert list(dict.fromkeys(e["session_id"] for e in entries)) == [SESSION_A, SESSION_B, SESSION_C, SESSION_D]
 
 
 def test_sessions_a_and_b_have_every_kind_of_record(demo):
@@ -77,11 +77,12 @@ def test_overall_verdicts(demo):
     assert _overall(entries, SESSION_A)["data"]["verdict"] == "SUPPORTED"
     assert _overall(entries, SESSION_B)["data"]["verdict"] == "CONTRADICTED"
     assert _overall(entries, SESSION_C)["data"]["verdict"] == "NO_STATEMENT"
+    assert [e["data"]["verdict"] for e in _session(entries, SESSION_D) if e["data"].get("kind_detail") == "statement_overall"] == ["SUPPORTED", "SUPPORTED"]
 
 
 def test_the_overall_verdict_is_the_last_record_of_each_session(demo):
     _, entries = demo
-    for sid in (SESSION_A, SESSION_B, SESSION_C):
+    for sid in (SESSION_A, SESSION_B, SESSION_C, SESSION_D):
         last = _session(entries, sid)[-1]
         assert last["kind"] == "verdict"
         assert last["data"].get("kind_detail") == "statement_overall"
@@ -99,6 +100,38 @@ def test_session_a_read_claim_is_supported_by_a_tool_entry(demo):
     )
     assert read_verdict["data"]["verdict"] == "SUPPORTED"
 
+
+# --- session D: two turns, and a person in between -------------------------------
+
+def _turns(entries):
+    return [e for e in _session(entries, SESSION_D) if e["kind"] == "witness" and e["data"]["event"] == "turn"]
+
+
+def test_session_d_has_two_turns_and_one_between_turns_record(demo):
+    _, entries = demo
+    assert len(_turns(entries)) == 2
+    (between,) = [e for e in _session(entries, SESSION_D) if e["data"].get("event") == "between_turns"]
+    assert between["data"]["diff"] == {
+        "created": [], "modified": [], "deleted": ["drafts/old-a.txt", "drafts/old-b.txt"],
+    }
+    assert between["data"]["unfinished"] is False
+    assert between["seq"] == _turns(entries)[1]["seq"] + 1
+
+
+def test_session_d_second_turn_is_supported_with_nothing_undeclared(demo):
+    _, entries = demo
+    overalls = [e for e in _session(entries, SESSION_D) if e["data"].get("kind_detail") == "statement_overall"]
+    assert [o["data"]["verdict"] for o in overalls] == ["SUPPORTED", "SUPPORTED"]
+    assert overalls[1]["data"]["undeclared"] == []
+    stops = [e for e in _session(entries, SESSION_D) if e["data"].get("event") == "stop"]
+    assert stops[1]["data"]["diff"]["deleted"] == ["drafts/draft-1.txt", "drafts/draft-2.txt"]
+    assert stops[1]["data"]["baseline"] == f"turn:{_turns(entries)[1]['seq']}"
+
+
+def test_session_d_each_turn_has_its_own_statement(demo):
+    _, entries = demo
+    summaries = [e["data"]["summary"] for e in _session(entries, SESSION_D) if e["kind"] == "statement"]
+    assert summaries == ["Wrote the plan.", "Cleared two drafts."]
 
 # --- session B: the real script -------------------------------------------------
 

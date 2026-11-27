@@ -108,9 +108,24 @@ def verify(
     # Build tool-entry index for files_read                               #
     # ------------------------------------------------------------------ #
     # Map normalised path → list[seq] from tool entries in this session.
+    # A read in an earlier turn is not evidence for this turn's statement: when the
+    # session has turn starts, only the tool calls between the start of the turn this
+    # stop closes and the stop count. Without turn starts, the whole session counts.
+    turn_seq = max(
+        (
+            e["seq"] for e in ledger_entries
+            if e["kind"] == "witness"
+            and e.get("session_id") == session_id
+            and e["data"].get("event") == "turn"
+            and e["seq"] < witness_seq
+        ),
+        default=None,
+    )
     tool_path_index: dict[str, list[int]] = {}
     for e in ledger_entries:
         if e["kind"] != "tool" or e.get("session_id") != session_id:
+            continue
+        if turn_seq is not None and not (turn_seq < e["seq"] < witness_seq):
             continue
         ti = e["data"].get("tool_input") or {}
         for v in ti.values():

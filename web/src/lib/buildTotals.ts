@@ -1,7 +1,10 @@
 import type { Entry } from "./chainCheck";
+import { splitRolls } from "./rolls";
 
 export type BuildTotals = {
   sessions: number;
+  /** Rolls: one per turn of each session. */
+  turns: number;
   lines: number;
   /** Statements that got a verdict (a session with no statement has none). */
   checked: number;
@@ -46,7 +49,15 @@ export function buildTotals(entries: Entry[]): BuildTotals {
     (e) => e.kind === "statement" && !checkedKeys.has(`${e.session_id}|${String(e.data.witness_seq)}`),
   ).length;
 
-  return { sessions: sessions.size, lines: entries.length, checked, matched, silent, unchecked };
+  return {
+    sessions: sessions.size,
+    turns: splitRolls(entries).length,
+    lines: entries.length,
+    checked,
+    matched,
+    silent,
+    unchecked,
+  };
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -56,7 +67,9 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * count of statements checked.
  */
 export function totalsText(t: BuildTotals): string {
-  const sentences = [`${plural(t.sessions, "session", "sessions")}, ${plural(t.lines, "line", "lines")}.`];
+  // A chat is one session with many turns: say so when the two numbers differ.
+  const turns = t.turns !== t.sessions ? `, ${plural(t.turns, "turn", "turns")}` : "";
+  const sentences = [`${plural(t.sessions, "session", "sessions")}${turns}, ${plural(t.lines, "line", "lines")}.`];
   sentences.push(
     t.checked === 0
       ? "0 statements checked."

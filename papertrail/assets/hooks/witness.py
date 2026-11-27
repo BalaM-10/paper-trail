@@ -1,4 +1,6 @@
-"""Kiro hook: take a snapshot at session start or stop ("start" or "stop"). Never raises."""
+"""Kiro hook: the witness takes a snapshot. Run as `witness.py start`, `witness.py turn`
+or `witness.py stop`. Never raises, and prints nothing: Kiro adds a hook's output to the
+agent's context, and a UserPromptSubmit hook that exits with 2 would block the prompt."""
 import json
 import os
 import sys
@@ -26,35 +28,44 @@ def _note_and_exit(source: str, exc: BaseException) -> None:
 
 if (_project / "papertrail").is_dir():  # this repository: use the folder beside .kiro
     sys.path.insert(0, str(_project))
+
 try:
-    from papertrail import ledger
-    from papertrail.session import on_start, on_stop
+    from papertrail import ledger, session
 except Exception as exc:
     _note_and_exit("witness.py", exc)
 
+# event on the command line -> the function in papertrail/session.py that handles it
+HANDLERS = {"start": "on_start", "turn": "on_turn_start", "stop": "on_stop"}
+
 
 def _save_payload(event: str, payload: dict, root: Path) -> None:
-    """Write raw JSON once to .papertrail/payloads/session-<event>.json."""
+    """Write the payload once to .papertrail/payloads/session-<event>.json (to see what Kiro sends)."""
     payloads_dir = root / ".papertrail" / "payloads"
     payloads_dir.mkdir(parents=True, exist_ok=True)
     dest = payloads_dir / f"session-{event}.json"
     if not dest.exists():
-        dest.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        saved = dict(payload)
+        if "prompt" in saved:  # what the person typed is never kept
+            saved["prompt"] = f"<not kept: {len(str(saved['prompt']))} characters>"
+        dest.write_text(json.dumps(saved, indent=2), encoding="utf-8")
 
 
+event = sys.argv[1] if len(sys.argv) > 1 else ""
 raw = ""
 payload = {}
 try:
     raw = sys.stdin.read()
     payload = json.loads(raw) if raw.strip() else {}
-    _save_payload(sys.argv[1], payload, root)
-    if sys.argv[1] == "start":
-        on_start(payload, root, Path.home())
-    else:
-        on_stop(payload, root, Path.home())
+    if event not in HANDLERS:
+        raise ValueError(f"unknown event {event!r}; use start, turn or stop")
+    _save_payload(event, payload, root)
+    getattr(session, HANDLERS[event])(payload, root, Path.home())
 except Exception as exc:
-    ledger_path = root / ".papertrail" / "ledger.jsonl"
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger.append(ledger_path, payload.get("session_id", "unknown"),
-                  "error", {"error": str(exc), "source": f"witness.py {sys.argv[1] if len(sys.argv) > 1 else ''}"})
+    try:
+        ledger_path = root / ".papertrail" / "ledger.jsonl"
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        ledger.append(ledger_path, payload.get("session_id", "unknown") if isinstance(payload, dict) else "unknown",
+                      "error", {"error": str(exc), "source": f"witness.py {event}"})
+    except Exception:
+        pass
 sys.exit(0)
