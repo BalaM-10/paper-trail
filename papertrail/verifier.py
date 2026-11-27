@@ -24,6 +24,7 @@ def verify(
     statement: dict,
     ledger_entries: list[dict],
     session_id: str,
+    ledger_path: Path | None = None,
 ) -> dict:
     """
     Verify every file claim in statement against ledger_entries.
@@ -39,6 +40,10 @@ def verify(
     and data.witness_seq == statement["witness_seq"] already exists in
     ledger_entries, the stored result is reconstructed and returned without
     appending anything new.
+
+    ledger_path: where verdict entries are appended. When omitted it is
+    derived from PAPERTRAIL_ROOT, or the project root if that is unset.
+    Callers that must not touch the project's own ledger pass it explicitly.
     """
     witness_seq: int = statement["witness_seq"]
 
@@ -204,8 +209,8 @@ def verify(
     # ------------------------------------------------------------------ #
     # Ledger writes                                                        #
     # ------------------------------------------------------------------ #
-    # Derive ledger path from session entries (or fall back to a placeholder).
-    ledger_path = _find_ledger_path(ledger_entries)
+    if ledger_path is None:
+        ledger_path = _find_ledger_path(ledger_entries)
 
     for v in verdicts:
         ledger_mod.append(ledger_path, session_id, "verdict", {

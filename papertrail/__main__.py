@@ -110,12 +110,34 @@ def _cmd_check_chain(args: list[str]) -> int:
         return 1
 
 
+DEFAULT_PORT = 8765
+
+
+def _cmd_serve(args: list[str]) -> int:
+    port = DEFAULT_PORT
+    if "--port" in args:
+        i = args.index("--port")
+        try:
+            port = int(args[i + 1])
+        except (IndexError, ValueError):
+            print("Error: --port needs a number, for example --port 9000", file=sys.stderr)
+            return 1
+
+    # Imported here so verify and check-chain work without the web packages.
+    import uvicorn
+    from papertrail.api import app
+
+    print(f"Paper Trail API -> http://127.0.0.1:{port}")
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
     if not argv:
-        print("Usage: python -m papertrail <verify|check-chain> [args]", file=sys.stderr)
+        print("Usage: python -m papertrail <verify|check-chain|serve> [args]", file=sys.stderr)
         return 1
 
     cmd, *rest = argv
@@ -123,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_verify(rest)
     elif cmd == "check-chain":
         return _cmd_check_chain(rest)
+    elif cmd == "serve":
+        return _cmd_serve(rest)
     else:
         print(f"Unknown subcommand: {cmd!r}", file=sys.stderr)
         return 1

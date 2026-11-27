@@ -1,0 +1,19 @@
+{
+  "entry": {
+    "seq": 1,
+    "ts": "2026-01-01T00:00:00.000000Z",
+    "session_id": "fixture",
+    "kind": "tool",
+    "data": {
+      "quotes": "say \"hello\"",
+      "backslash": "C:\\Users\\test",
+      "newline": "line1\nline2",
+      "tab": "col1\tcol2",
+      "control": "\u0001",
+      "emoji": "🔍",
+      "accent": "café"
+    },
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "expected_hash": "2e1aafcabf89f0e5d6a2cda4665eff2446974bdc268dbddcb68deda560acd556"
+}

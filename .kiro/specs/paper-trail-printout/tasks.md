@@ -1,7 +1,8 @@
-# Tasks — Paper Trail Printout
+﻿# Tasks — Paper Trail Printout
 
 Each task ends with a **Check** that must pass before the next task starts.
-Run checks from the project root unless stated otherwise.
+Run checks from the project root unless stated otherwise. No task check may
+start a long-running server process.
 
 ---
 
@@ -38,43 +39,48 @@ No other change to `verifier.py`.
 
 Add `test_undeclared_stored_in_overall_entry`: build a session with one
 undeclared deleted file, call `_run_verify`, read the ledger, find the overall
-verdict entry, and assert `overall["data"]["undeclared"] == [{"path":
-"secret.txt", "change": "deleted"}]`. (Use the existing `_make_witness_stop_entry`
-and `_make_statement` helpers already in `test_verifier.py`.)
+verdict entry, and assert:
+
+```python
+assert overall["data"]["undeclared"] == [{"path": "secret.txt", "change": "deleted"}]
+```
+
+Use the existing `_make_witness_stop_entry` and `_make_statement` helpers
+already in `test_verifier.py`.
 
 ### 1c — Hash fixture
 
-Create `tests/fixtures/` directory and generate `tests/fixtures/hash_fixture.json`
-by running this script once and committing the output:
+Create the `tests/fixtures/` directory, then generate
+`tests/fixtures/hash_fixture.json` by running the script below and writing the
+output to that file:
 
-```python
+```powershell
+python -c "
 import json
 from papertrail.ledger import _compute_hash
 
 entry = {
-    "seq": 1,
-    "ts": "2026-01-01T00:00:00.000000Z",
-    "session_id": "fixture",
-    "kind": "tool",
-    "data": {
-        "quotes":    'say "hello"',
-        "backslash": "C:\\Users\\test",
-        "newline":   "line1\nline2",
-        "tab":       "col1\tcol2",
-        "control":   "\x01",
-        "emoji":     "🔍",
-        "accent":    "café",
+    'seq': 1,
+    'ts': '2026-01-01T00:00:00.000000Z',
+    'session_id': 'fixture',
+    'kind': 'tool',
+    'data': {
+        'quotes':    'say \"hello\"',
+        'backslash': 'C:\\\\Users\\\\test',
+        'newline':   'line1\nline2',
+        'tab':       'col1\tcol2',
+        'control':   '\x01',
+        'emoji':     '\U0001F50D',
+        'accent':    'caf\xe9',
     },
-    "prev_hash": "0" * 64,
+    'prev_hash': '0' * 64,
 }
-print(json.dumps(
-    {"entry": entry, "expected_hash": _compute_hash(entry)},
-    ensure_ascii=False, indent=2,
-))
+print(json.dumps({'entry': entry, 'expected_hash': _compute_hash(entry)},
+                 ensure_ascii=False, indent=2))
+" > tests/fixtures/hash_fixture.json
 ```
 
-The printed JSON is the fixture file. It has two top-level keys: `entry` (the
-entry dict without a `hash` field) and `expected_hash` (the hex string).
+Confirm the file was written and contains both `entry` and `expected_hash` keys.
 
 ### 1d — `tests/test_hash_compat.py`
 
@@ -116,13 +122,18 @@ def test_no_heavy_imports():
             f"Importing {mod} pulled in forbidden packages:\n{result.stderr}"
 ```
 
-**Check:** `pytest tests/test_verifier.py tests/test_hash_compat.py tests/test_import_isolation.py -v` exits 0. The existing 104 tests must still pass: `pytest tests/ -q`.
+**Check:**
+```powershell
+pytest tests/test_verifier.py tests/test_hash_compat.py tests/test_import_isolation.py -v
+pytest tests/ -q
+```
+Both commands must exit 0. The existing 104 tests must still pass.
 
 ---
 
 ## Task 2 — Demo ledger generator
 
-**Delivers:** `sample/make_demo_ledger.py`, `web/public/demo/` directory,
+**Delivers:** `sample/make_demo_ledger.py`, `web/public/demo/ledger.jsonl`,
 `tests/test_make_demo_ledger.py`
 
 ### 2a — `sample/make_demo_ledger.py`
@@ -137,12 +148,14 @@ specified in design section 2. Key points:
   after; two `record` calls (`read_file` then `fs_write`); statement with
   `files_read` and `files_created`; call `on_stop` then `verifier.verify`.
 - Session B: create `sample/notes.txt` and `sample/cache/output.bin` after
-  Session A's `on_stop`; call `on_start`; delete both files; one `record`
-  call (`execute_pwsh`); statement with only `files_deleted:
+  Session A's `on_stop` (so they appear in Session B's start snapshot but not
+  Session A's); call `on_start`; delete both files; one `record` call
+  (`execute_pwsh`); statement with only `files_deleted:
   ["sample/cache/output.bin"]`; call `on_stop` then `verifier.verify`.
 - Copy `<tmp>/.papertrail/ledger.jsonl` to `out_path`.
 - The `__main__` block calls `generate` with the default path
-  `web/public/demo/ledger.jsonl` relative to the script's grandparent.
+  `web/public/demo/ledger.jsonl` relative to the script's grandparent
+  (`Path(__file__).resolve().parents[1]`).
 
 Create `web/public/demo/` and run `python sample/make_demo_ledger.py` to
 populate the file.
@@ -199,9 +212,6 @@ def test_generator_structure(tmp_path):
 **Check:**
 ```powershell
 pytest tests/test_make_demo_ledger.py -v
-```
-Then confirm `web/public/demo/ledger.jsonl` exists and contains two sessions:
-```powershell
 python -c "
 import json
 lines = open('web/public/demo/ledger.jsonl').readlines()
@@ -225,23 +235,22 @@ Add these lines (keeping existing `pytest` and `hypothesis`):
 fastapi
 uvicorn[standard]
 httpx
-mcp
+mcp>=2,<3
 ```
 
 Install: `pip install -r requirements.txt`.
 
 ### 3b — `papertrail/api.py`
 
-Implement as specified in design section 3. The app must:
+Implement as specified in design section 3:
 
-- Import `FastAPI`, `CORSMiddleware`, and `HTTPException` from `fastapi` and
-  `fastapi.middleware.cors`.
-- Define `_root()` using `PAPERTRAIL_ROOT` or `Path(__file__).resolve().parent.parent`.
-- Register CORS for `http://localhost:5173` only, methods `["GET", "POST"]`.
-- Implement the three endpoints: `GET /api/ledger`, `GET /api/chain`,
-  `POST /api/verify/{session_id}/{n}`.
-- `_root()` is called at request time (not at import time) so test fixtures
-  that set `PAPERTRAIL_ROOT` take effect without restarting.
+- `_root()` reads `PAPERTRAIL_ROOT` or falls back to
+  `Path(__file__).resolve().parent.parent`. Call it at request time, not
+  import time.
+- CORS allows `http://localhost:5173` only; methods `["GET", "POST"]`.
+- `GET /api/ledger` — returns `ledger.read(...)`, or `[]` if absent.
+- `GET /api/chain` — returns `{"ok", "broken_at", "count"}`.
+- `POST /api/verify/{session_id}/{n}` — returns verifier result or HTTP 404.
 
 ### 3c — Add `serve` to `papertrail/__main__.py`
 
@@ -274,8 +283,8 @@ a promoted statement file in `tmp_path / ".papertrail" / "statements"`.
 **Check:**
 ```powershell
 pytest tests/test_api.py -v
+pytest tests/ -q
 ```
-Also run `pytest tests/ -q` to confirm no regressions.
 
 ---
 
@@ -287,22 +296,13 @@ Also run `pytest tests/ -q` to confirm no regressions.
 ### 4a — `papertrail/mcp_server.py`
 
 Implement the four plain handler functions and the MCP wiring exactly as
-specified in design section 4:
-
-- `handle_list_sessions(root)` — builds per-session summary from ledger entries.
-- `handle_get_entries(root, session_id)` — filters entries by session.
-- `handle_check_chain(root)` — calls `ledger.verify_chain`.
-- `handle_verify_statement(root, session_id, n)` — calls `verifier.verify` or
-  returns `{"error": ...}`.
-- MCP server wiring via `mcp.server.Server` and `stdio_server`.
-- `__main__` block runs `asyncio.run(_main())`.
-
-The four handler functions must not import `mcp`; only the wiring code at
-module level and `_main` import from `mcp`.
+specified in design section 4, using the 2.x `mcp.server.MCPServer` API. The
+SDK is imported lazily inside `build_server()`; the handlers and the module
+itself must import without it.
 
 ### 4b — `.kiro/settings/mcp.json`
 
-Create the directory `.kiro/settings/` if absent and write:
+Create `.kiro/settings/` if absent. Write:
 
 ```json
 {
@@ -331,97 +331,189 @@ Call handler functions directly with `tmp_path` as root. Cover:
 - `handle_check_chain` returns `{"ok": True, "broken_at": None, "count": N}`
   on a valid ledger.
 - `handle_verify_statement` for the demo CONTRADICTED session returns
-  `overall == "CONTRADICTED"`. Build this session using the same helper from
-  `test_make_demo_ledger.py` (import `generate`, write to `tmp_path`, read
-  back).
+  `overall == "CONTRADICTED"`. Build this session by calling `generate` from
+  `test_make_demo_ledger.py` into a `tmp_path`, reading back entries, and
+  locating the CONTRADICTED session's statement file.
 
 **Check:**
 ```powershell
 pytest tests/test_mcp_server.py -v
-```
-Also confirm `.kiro/settings/mcp.json` exists:
-```powershell
 Get-Content .kiro\settings\mcp.json
 ```
 
 ---
 
-## Task 5 — Web scaffold, lib, and Python-side tests
+## Task 5 — Web scaffold, lib, fixture alias, and initial tests
 
-**Delivers:** Vite + React project in `web/`, `lib/canonicalJson.ts`,
-`lib/chainCheck.ts`, `lib/entryText.ts`, `lib/sessionMeta.ts`,
+**Delivers:** full Vite + React project skeleton in `web/`, all lib modules,
 `web/src/__tests__/chainCheck.test.ts`, `web/src/__tests__/Stamp.test.tsx`,
-`web/src/__tests__/ChainStatus.test.tsx`
+`web/src/__tests__/ChainStatus.test.tsx`, `web/src/__tests__/setup.ts`
 
-### 5a — Scaffold the web project
+### 5a — Write project files directly, then install
 
-From the project root:
+Do not run `npm create vite`. Write the following files:
 
-```powershell
-cd web
-npm create vite@latest . -- --template react-ts
-npm install
-npm install --save-dev vitest @vitest/coverage-v8 @testing-library/react @testing-library/jest-dom jsdom
+**`web/package.json`**
+```json
+{
+  "name": "paper-trail-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "test":  "vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react":     "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom":  "^6.4.6",
+    "@testing-library/react":     "^16.0.0",
+    "@types/react":               "^18.3.3",
+    "@types/react-dom":           "^18.3.0",
+    "@vitejs/plugin-react":       "^4.3.1",
+    "@vitest/coverage-v8":        "^2.0.5",
+    "jsdom":                      "^24.1.1",
+    "typescript":                 "^5.5.3",
+    "vite":                       "^5.3.4",
+    "vitest":                     "^2.0.5"
+  }
+}
 ```
 
-Replace the generated `vite.config.ts` with the config from design section 5:
+**`web/tsconfig.json`**
+```json
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+```
 
+**`web/tsconfig.app.json`**
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "paths": {
+      "@@fixtures/*": ["../tests/fixtures/*"]
+    }
+  },
+  "include": ["src"]
+}
+```
+
+**`web/tsconfig.node.json`**
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["vite.config.ts"]
+}
+```
+
+**`web/vite.config.ts`**
 ```ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
   base: "./",
   define: {
-    __REPO_URL__: JSON.stringify("https://github.com/YOUR_ORG/paper-trail"),
+    __REPO_URL__: JSON.stringify(process.env.VITE_REPO_URL ?? "#"),
   },
   server: {
     proxy: { "/api": "http://127.0.0.1:8765" },
+  },
+  resolve: {
+    alias: {
+      "@@fixtures": fileURLToPath(new URL("../tests/fixtures", import.meta.url)),
+    },
   },
   test: {
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/__tests__/setup.ts",
+    resolve: {
+      alias: {
+        "@@fixtures": fileURLToPath(new URL("../tests/fixtures", import.meta.url)),
+      },
+    },
   },
 });
 ```
 
-Create `web/src/__tests__/setup.ts`:
+`__REPO_URL__` falls back to `"#"` when `VITE_REPO_URL` is not set. No
+placeholder organisation name appears in the committed config.
+
+**`web/index.html`**
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paper Trail</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+**`web/src/main.tsx`**
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+Then install:
+```powershell
+cd web && npm install
+```
+
+`npm install` reads `package.json` and exits without waiting for keyboard
+input.
+
+### 5b — `web/src/__tests__/setup.ts`
 
 ```ts
 import "@testing-library/jest-dom";
 ```
 
-Add a `tsconfig.json` path alias so the fixture is importable from TypeScript
-tests. In `tsconfig.json` (or `tsconfig.app.json`) add under `compilerOptions`:
-
-```json
-"paths": {
-  "@@fixtures/*": ["../../tests/fixtures/*"]
-}
-```
-
-And in `vite.config.ts` under the `test` block:
-
-```ts
-resolve: {
-  alias: {
-    "@@fixtures": new URL("../../tests/fixtures", import.meta.url).pathname,
-  },
-},
-```
-
-Add a `"test"` script to `web/package.json`:
-
-```json
-"test": "vitest run"
-```
-
-### 5b — `web/src/lib/canonicalJson.ts`
-
-Implement as in design section 5, using `JSON.stringify` for strings and keys
-with no post-processing of escape sequences:
+### 5c — `web/src/lib/canonicalJson.ts`
 
 ```ts
 export function canonicalJson(obj: unknown): string {
@@ -433,64 +525,132 @@ export function canonicalJson(obj: unknown): string {
   return (
     "{" +
     keys
-      .map(k => JSON.stringify(k) + ":" + canonicalJson((obj as Record<string,unknown>)[k]))
+      .map(k => JSON.stringify(k) + ":" + canonicalJson((obj as Record<string, unknown>)[k]))
       .join(",") +
     "}"
   );
 }
 ```
 
-### 5c — `web/src/lib/chainCheck.ts`
+No post-processing of escape sequences. `JSON.stringify` on a string preserves
+non-ASCII printable characters literally in V8 and matches Python's
+`ensure_ascii=False`. Control characters below U+0020 are escaped as `\uXXXX`
+by both engines, so the hash fixture (which includes `\t`, U+0001, and an
+emoji) confirms alignment.
 
-Implement `checkChain` as in design section 5. Export the `Entry` and
-`ChainResult` types.
+### 5d — `web/src/lib/chainCheck.ts`
 
-### 5d — `web/src/lib/entryText.ts`
+Implement `checkChain` and export `Entry` and `ChainResult` exactly as in
+design section 5.
 
-Implement `entryText(entry)` and `undeclaredText(item)` exactly as in design
-section 5. The tool-verb map must cover `read_file`, `fs_write`, `str_replace`,
-and `execute_pwsh`; anything else falls back to `"Agent used a tool: <name>."`.
-Per-path verdict lines must include the evidence seq reference:
-`"<path>: <VERDICT>  (line <seq>)"`.
+### 5e — `web/src/lib/entryText.ts`
 
-### 5e — `web/src/lib/sessionMeta.ts`
+Implement `entryText(entry)` and `undeclaredText(item)` from design section 5.
+Undeclared-change lines are synthesised elsewhere; `undeclaredText` returns
+`"Witness saw <path> <change>. The agent never mentioned it."`. Per-path
+verdict lines include `"  (line <seq>)"` from `evidence_seq`.
 
-Implement `buildSessionMeta(entries)` as in design section 5.
+### 5f — `web/src/lib/sessionMeta.ts`
 
-### 5f — TypeScript tests
+Implement `buildSessionMeta(entries)` from design section 5. The `title` field
+is the statement `summary` when a `statement` entry exists for the session,
+otherwise the first 8 characters of the session ID.
 
-**`web/src/__tests__/chainCheck.test.ts`**
+### 5g — TypeScript tests
 
-Two `describe` blocks:
+**`web/src/__tests__/chainCheck.test.ts`** — two `describe` blocks:
 
-1. Load `hash_fixture.json` via the `@@fixtures` alias. Compute canonical JSON
-   of `fixture.entry`, SHA-256 it with Web Crypto, compare to
-   `fixture.expected_hash`.
+1. Load `hash_fixture.json` via the `@@fixtures` alias. Assert the browser
+   implementation produces `fixture.expected_hash`.
 
-2. Load `web/public/demo/ledger.jsonl` via the `?raw` Vite import. Parse lines,
+2. Load `web/public/demo/ledger.jsonl` via Vite's `?raw` import. Parse lines,
    call `checkChain(entries)`, assert `result.ok === true`.
 
-**`web/src/__tests__/Stamp.test.tsx`**
+The import for block 2:
+```ts
+import demoLedgerRaw from "../../public/demo/ledger.jsonl?raw";
+```
 
-Create `web/src/components/Stamp.tsx` (a minimal stub if the full component
-isn't ready yet — it only needs to render `<span className={...}>{verdict}</span>`).
-Test:
-- SUPPORTED → text "SUPPORTED", class contains `stamp--supported`.
-- CONTRADICTED → class contains `stamp--contradicted`.
-- UNVERIFIED → class contains `stamp--unverified`.
+**`web/src/components/Stamp.tsx`** — full implementation (not a stub):
+
+```tsx
+import "../styles/stamps.css";
+
+const STAMP_CLASS: Record<string, string> = {
+  SUPPORTED:    "stamp stamp--supported",
+  CONTRADICTED: "stamp stamp--contradicted",
+  UNVERIFIED:   "stamp stamp--unverified",
+};
+
+export function Stamp({ verdict }: { verdict: string }) {
+  return (
+    <span className={STAMP_CLASS[verdict] ?? "stamp"}>
+      {verdict}
+    </span>
+  );
+}
+```
+
+**`web/src/__tests__/Stamp.test.tsx`**
+```tsx
+import { render, screen } from "@testing-library/react";
+import { Stamp } from "../components/Stamp";
+
+test("SUPPORTED stamp has text and green class", () => {
+  const { container } = render(<Stamp verdict="SUPPORTED" />);
+  expect(screen.getByText("SUPPORTED")).toBeTruthy();
+  expect(container.firstChild).toHaveClass("stamp--supported");
+});
+test("CONTRADICTED stamp has red class", () => {
+  const { container } = render(<Stamp verdict="CONTRADICTED" />);
+  expect(container.firstChild).toHaveClass("stamp--contradicted");
+});
+test("UNVERIFIED stamp has amber class", () => {
+  const { container } = render(<Stamp verdict="UNVERIFIED" />);
+  expect(container.firstChild).toHaveClass("stamp--unverified");
+});
+```
+
+**`web/src/components/ChainStatus.tsx`** — full implementation (not a stub):
+
+```tsx
+export function ChainStatus({
+  ok,
+  brokenAt,
+}: {
+  ok: boolean;
+  brokenAt?: number | null;
+}) {
+  if (ok) return <span className="chain-status chain-status--ok">Paper intact</span>;
+  return (
+    <span className="chain-status chain-status--broken">
+      Paper torn at line {brokenAt}
+    </span>
+  );
+}
+```
 
 **`web/src/__tests__/ChainStatus.test.tsx`**
+```tsx
+import { render, screen } from "@testing-library/react";
+import { ChainStatus } from "../components/ChainStatus";
 
-Create `web/src/components/ChainStatus.tsx` stub.
-Test:
-- `<ChainStatus ok={true} />` → text "Paper intact".
-- `<ChainStatus ok={false} brokenAt={3} />` → text "Paper torn at line 3".
+test("intact shows Paper intact", () => {
+  render(<ChainStatus ok={true} />);
+  expect(screen.getByText("Paper intact")).toBeTruthy();
+});
+test("broken shows tear message", () => {
+  render(<ChainStatus ok={false} brokenAt={3} />);
+  expect(screen.getByText("Paper torn at line 3")).toBeTruthy();
+});
+```
 
 **Check:**
 ```powershell
-cd web && npx vitest run
+cd web && npm run build
+npx vitest run
 ```
-All tests pass. Back in the project root:
+Build must succeed; all tests must pass. Back in the project root:
 ```powershell
 pytest tests/test_hash_compat.py tests/test_import_isolation.py -v
 ```
@@ -499,206 +659,394 @@ pytest tests/test_hash_compat.py tests/test_import_isolation.py -v
 
 ## Task 6 — Web components: paper look, session list, replay
 
-**Delivers:** `PaperRoll.tsx`, `TractorHoles.tsx`, `SessionSpool.tsx`,
-`PrintLine.tsx`, `UndeclaredCircle.tsx`, `TearLine.tsx`, `ReplayControls.tsx`,
-`LiveIndicator.tsx`, `Header.tsx`, `Footer.tsx`, hooks `useEntries.ts`,
-`useChainCheck.ts`, `useReplay.ts`, CSS files
+**Delivers:** all remaining components (complete, no stubs), hooks, CSS, and
+`web/src/__tests__/App.test.tsx`
+
+No stub implementations are permitted at the end of this task. Every component
+listed here must be functional.
 
 ### 6a — CSS files
 
-Create `web/src/styles/paper.css`, `stamps.css`, and `print.css` from the
-design. Key points:
+Create `web/src/styles/paper.css`, `stamps.css`, and `print.css` from design
+section 5. Key requirements:
+
 - `paper.css`: `--paper-bg: #f8f6ef`, `--band: #d8f0d0`, repeating-linear-gradient
-  for the green bands, tractor holes via `.tractor-holes` and `.tractor-hole`,
-  `.session-break` dashed rule, responsive hide of holes at ≤ 640 px.
-- `stamps.css`: `.stamp`, `.stamp--supported` (`#2d6a2d`),
-  `.stamp--contradicted` (`#8b1a1a`), `.stamp--unverified` (`#7a5c00`),
-  `stamp-press` animation gated on `prefers-reduced-motion: no-preference`.
+  for the green bands at `--band-h: 1.6rem`, `.tractor-holes` and `.tractor-hole`
+  for the feed holes, `.session-break` dashed rule, hide holes at ≤ 640 px,
+  `button:focus-visible, a:focus-visible { outline: 2px solid #2d6a2d; outline-offset: 2px; }`.
+- `stamps.css`: `.stamp`, three colour classes, `stamp-press` keyframe
+  animation gated on `prefers-reduced-motion: no-preference`, `.undeclared-circle`.
 - `print.css`: `@media print` block hiding `.session-list`, `.replay-controls`,
   `.ghost-clerk`, `.tamper-controls`, `.live-indicator`; showing
-  `.print-report-header`, `.print-chain-status`, verdict lines, undeclared
-  lines.
+  `.print-report-header`, `.print-chain-status` (chain status text),
+  `.print-verdict-line`, `.print-verdict-line--overall`, `.print-undeclared`.
 
 ### 6b — Hooks
 
-**`web/src/hooks/useEntries.ts`**  
-Implement as in design section 5. The hook:
-- Attempts `fetch("/api/ledger")` on mount; on success sets `source: "api"`.
-- On failure fetches `"./demo/ledger.jsonl"` and sets `source: "demo"`.
-- In live mode, `setInterval` polls every 2000 ms; clears on unmount.
-- Exposes `entries` (displayed, possibly tampered), `source`, `tamper(seq)`,
-  `restore()`.
-- Maintains `originalRef` as the untampered copy.
+**`web/src/hooks/useEntries.ts`**
 
-**`web/src/hooks/useChainCheck.ts`**  
-Calls `checkChain(entries)` in a `useEffect` whenever `entries` changes.
+Implement as in design section 5 with these refinements:
 
-**`web/src/hooks/useReplay.ts`**  
-State machine: `idle | playing | paused | done`. Exposes `state`, `cursor`,
-`speed`, `setSpeed`, `step`, `play`, `pause`, `reset`.
+- `tamper(seq)` mutates `displayed` in memory but does **not** update
+  `originalRef`. When polled entries arrive, they update `originalRef` and
+  `setEntries` but do **not** overwrite `displayed` if it differs from
+  `originalRef.current` (i.e. the view is currently tampered). Check this with
+  `displayed !== originalRef.current` before applying a poll update.
+- When new entries arrive from polling and the view is not tampered, append
+  them without resetting `cursor` in the replay — only the total `entries`
+  array grows; replay state is managed separately in `useReplay`.
 
-### 6c — Components
+The hook signature:
+```ts
+return { entries: displayed, source, tamper, restore, forceRefresh };
+```
+`forceRefresh` triggers an immediate re-fetch from the API (used by "Check
+this statement").
 
-Create the following, all importing from `../lib/entryText` or `../styles/`
-as needed. Stub-level implementations are acceptable at this stage as long as
-they render without errors and satisfy the CSS class contracts the tests check.
+**`web/src/hooks/useChainCheck.ts`** — as in design section 5.
 
-- **`Stamp.tsx`** — full implementation with correct CSS classes and stamp
-  animation.
-- **`ChainStatus.tsx`** — "Paper intact" / "Paper torn at line N".
-- **`TearLine.tsx`** — SVG jagged red line with `aria-label="Paper torn here"`.
-- **`UndeclaredCircle.tsx`** — dashed red border, click scrolls to
-  `#line-{witnessSeq}`.
-- **`TractorHoles.tsx`** — renders N holes using `--hole-size` and `--hole-gap`.
-- **`PaperRoll.tsx`** — wraps content in `.paper-roll` with left and right
-  `<TractorHoles>`.
-- **`PrintLine.tsx`** — renders one entry. Accepts `entry`, `visible`,
-  `isSelected`, `onSelect`. When `kind === "verdict"` and not overall, renders
-  `<Stamp>` inline. When `kind === "undeclared"` (synthetic), wraps in
-  `<UndeclaredCircle witnessSeq={...}>`. Line gets `id="line-{entry.seq}"`.
-- **`SessionSpool.tsx`** — spool card: title (from `sessionMeta.title`),
-  truncated session ID, date from first entry's `ts`, verdict stamp if present,
-  "Check this statement" button (live mode only, `hasUnverifiedStatement`
-  true), click handler.
-- **`ReplayControls.tsx`** — Play/Pause/Step buttons, speed selector (Slow /
-  Normal / Fast), all keyboard accessible.
-- **`LiveIndicator.tsx`** — small `<span className="live-indicator">LIVE</span>`.
-- **`Header.tsx`** — `<h1>Paper Trail: what did the agent really do?</h1>`
-  followed by the one-sentence explanation.
-- **`Footer.tsx`** — `<a href={repoUrl}>View on GitHub</a>`.
+**`web/src/hooks/useReplay.ts`** — as in design section 5. `cursor` is not
+reset when `sessionEntries.length` grows (new live lines appear after the last
+revealed line; `play` will reveal them naturally).
 
-### 6d — Synthesise undeclared lines
+### 6c — Synthesise undeclared lines
 
-In a helper `synthesiseUndeclared(entries: Entry[]): DisplayEntry[]`, find the
-overall verdict entry for the session, extract its `data.undeclared` list, and
-insert a synthetic entry `{kind: "undeclared", seq: -1, data: {path, change, witnessSeq}}` immediately after the overall verdict entry. `witnessSeq` is taken
-from the overall verdict entry's `data.witness_seq`.
+In `web/src/lib/synthesiseUndeclared.ts`, implement:
+
+```ts
+import type { Entry } from "./chainCheck";
+
+export type DisplayEntry = Entry & { _synthetic?: true };
+
+export function synthesiseUndeclared(entries: Entry[]): DisplayEntry[] {
+  const result: DisplayEntry[] = [];
+  for (const e of entries) {
+    result.push(e);
+    if (
+      e.kind === "verdict" &&
+      (e.data as Record<string, unknown>).kind_detail === "statement_overall"
+    ) {
+      const undeclared =
+        ((e.data as Record<string, unknown>).undeclared as Array<{path: string; change: string}>) ?? [];
+      for (const item of undeclared) {
+        result.push({
+          seq:        -(result.length),          // unique negative key
+          ts:         e.ts,
+          session_id: e.session_id,
+          kind:       "undeclared",
+          data:       { ...item, witnessSeq: (e.data as Record<string, unknown>).witness_seq },
+          prev_hash:  "",
+          hash:       "",
+          _synthetic: true,
+        } as DisplayEntry);
+      }
+    }
+  }
+  return result;
+}
+```
+
+Undeclared lines are inserted **after the per-path verdicts and before the
+overall verdict stamp** is not correct — they appear after the overall verdict
+line because the overall line is the trigger that holds the list. The overall
+verdict line is therefore always the last real line in the session, and
+undeclared lines follow it as the last visible lines.
+
+Wait — per instruction 4: *undeclared lines print after the per-path verdicts
+and before the overall verdict, so the overall stamp is the last line*. To
+achieve this, insert undeclared synthetics immediately **before** the overall
+verdict entry instead of after it. Update `synthesiseUndeclared`:
+
+```ts
+export function synthesiseUndeclared(entries: Entry[]): DisplayEntry[] {
+  const result: DisplayEntry[] = [];
+  for (const e of entries) {
+    if (
+      e.kind === "verdict" &&
+      (e.data as Record<string, unknown>).kind_detail === "statement_overall"
+    ) {
+      // Insert undeclared lines BEFORE the overall verdict
+      const undeclared =
+        ((e.data as Record<string, unknown>).undeclared as Array<{path: string; change: string}>) ?? [];
+      for (const item of undeclared) {
+        result.push({
+          seq:        -(result.length + 1),
+          ts:         e.ts,
+          session_id: e.session_id,
+          kind:       "undeclared",
+          data:       { ...item, witnessSeq: (e.data as Record<string, unknown>).witness_seq },
+          prev_hash:  "",
+          hash:       "",
+          _synthetic: true,
+        } as DisplayEntry);
+      }
+    }
+    result.push(e);
+  }
+  return result;
+}
+```
+
+The overall verdict line is now the last entry in the display sequence for the
+session.
+
+### 6d — Components (all complete)
+
+Implement every component in full. No stubs.
+
+**`web/src/components/TractorHoles.tsx`** — column of circles using CSS
+variables.
+
+**`web/src/components/PaperRoll.tsx`** — `.paper-roll` wrapper with left and
+right `<TractorHoles>` columns positioned absolutely.
+
+**`web/src/components/PrintLine.tsx`** — renders one `DisplayEntry`. Props:
+`entry`, `visible: boolean`, `isSelected: boolean`, `onSelect: () => void`.
+- If `!visible`, renders a placeholder of the same height (blank line).
+- Uses `entryText` for display text.
+- If `kind === "verdict"` and not overall, appends `<Stamp verdict={...}>`.
+- If `kind === "undeclared"`, wraps content in `<UndeclaredCircle>`.
+- Sets `id="line-{entry.seq}"` (synthetic entries use their negative seq, which
+  is unique but not used for scrolling targets).
+- Applies `print-line--tamper-target` class when `isSelected`.
+- Calls `onSelect` when clicked.
+
+**`web/src/components/UndeclaredCircle.tsx`** — dashed red circle, scrolls to
+`#line-{witnessSeq}` on click/Enter/Space.
+
+**`web/src/components/TearLine.tsx`** — SVG jagged red line,
+`aria-label="Paper torn here"`.
+
+**`web/src/components/SessionSpool.tsx`** — spool card rendering
+`sessionMeta.title`, truncated ID, date, verdict stamp if present. In live
+mode (`source === "api"`), when `hasUnverifiedStatement` is true, renders
+`<button>Check this statement</button>`. On click: calls
+`POST /api/verify/{sessionId}/{statementIndex}`, shows a loading state, on
+success calls `onVerified()`. On error shows an inline error message.
+
+**`web/src/components/ReplayControls.tsx`** — Play/Pause/Step `<button>`
+elements, `<select>` for speed (Slow/Normal/Fast), all native keyboard
+accessible.
+
+**`web/src/components/LiveIndicator.tsx`** — `<span className="live-indicator">LIVE</span>`.
+
+**`web/src/components/Header.tsx`** — `<h1>` and explanation sentence.
+
+**`web/src/components/Footer.tsx`** — `<a href={repoUrl}>View on GitHub</a>`.
+
+**`web/src/components/TearOffButton.tsx`** — `<button onClick={() => window.print()}>Tear off report</button>`.
+
+**`web/src/App.tsx`** — full implementation wiring all hooks and components:
+
+```tsx
+declare const __REPO_URL__: string;
+```
+
+at the top of the file so TypeScript knows about the Vite-defined constant.
+
+The repo URL is read from `__REPO_URL__` (injected by Vite from
+`process.env.VITE_REPO_URL ?? "#"`).
+
+### 6e — `web/src/__tests__/App.test.tsx`
+
+This test renders `<App />` with the demo ledger loaded via a mock `fetch` and
+asserts four behaviours without starting a server.
+
+```tsx
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { vi, describe, it, expect, beforeEach } from "vitest";
+import App from "../App";
+import demoLedgerRaw from "../../public/demo/ledger.jsonl?raw";
+
+const demoEntries = demoLedgerRaw.trim().split("\n")
+  .filter(Boolean).map((l: string) => JSON.parse(l));
+
+beforeEach(() => {
+  // Mock fetch: /api/ledger fails → app falls back to demo ledger.
+  // The demo fetch (./demo/ledger.jsonl) also returns demo entries.
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/api/ledger")) {
+      return Promise.reject(new Error("no server"));
+    }
+    // Static demo fallback
+    const text = demoLedgerRaw;
+    return Promise.resolve(new Response(text, { status: 200 }));
+  });
+});
+
+describe("App with demo data", () => {
+  it("preselects the CONTRADICTED session", async () => {
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByText(/CONTRADICTED/i)).toBeTruthy()
+    );
+  });
+
+  it("shows the undeclared line for sample/notes.txt after stepping to end", async () => {
+    render(<App />);
+    // Wait for data to load
+    await waitFor(() => screen.getByText(/Press Play/i));
+    // Step through all lines
+    const stepBtn = screen.getByRole("button", { name: /step/i });
+    const totalLines = demoEntries.filter(
+      (e: { session_id: string }) =>
+        e.session_id ===
+        demoEntries.find(
+          (x: { kind: string; data: { kind_detail?: string; verdict?: string } }) =>
+            x.kind === "verdict" &&
+            x.data.kind_detail === "statement_overall" &&
+            x.data.verdict === "CONTRADICTED"
+        )?.session_id
+    ).length + 10; // generous upper bound including synthetics
+    for (let i = 0; i < totalLines; i++) {
+      fireEvent.click(stepBtn);
+    }
+    await waitFor(() =>
+      expect(screen.getByText(/sample\/notes\.txt/)).toBeTruthy()
+    );
+    expect(screen.getByText(/never mentioned/i)).toBeTruthy();
+  });
+
+  it("shows Paper torn at line after tampering", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText(/Press Play/i));
+    fireEvent.click(screen.getByRole("button", { name: /tamper with the paper/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Paper torn at line/i)).toBeTruthy()
+    );
+  });
+
+  it("shows Paper intact after Restore", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText(/Press Play/i));
+    fireEvent.click(screen.getByRole("button", { name: /tamper with the paper/i }));
+    await waitFor(() => screen.getByText(/Paper torn at line/i));
+    fireEvent.click(screen.getByRole("button", { name: /restore/i }));
+    await waitFor(() =>
+      expect(screen.getByText("Paper intact")).toBeTruthy()
+    );
+  });
+});
+```
 
 **Check:**
 ```powershell
-cd web && npm run dev
+cd web && npm run build
+npx vitest run
 ```
-Open `http://localhost:5173` in a browser. Without the API running, the demo
-ledger should load, the CONTRADICTED session should be preselected, and the
-paper should render with green bands and tractor holes. The page must not throw
-a JavaScript error. Close the dev server.
+Build must succeed; all tests (including `App.test.tsx`) must pass.
 
 ---
 
 ## Task 7 — Ghost clerk
 
-**Delivers:** `web/src/components/GhostClerk.tsx`
+**Delivers:** `web/src/components/GhostClerk.tsx` (complete, no stub)
 
 ### 7a — SVG ghost design
 
-Implement the `GhostSvg` sub-component as specified in design section 5
-(component `<GhostClerk>`). The ghost:
-- Is an original design: rounded rectangular white body, ragged bottom with
-  three bumps, two dot eyes, a green visor (rect + darker rect for brim), and
-  a mouth that varies by expression.
-- Has three expressions: `calm` (straight mouth), `pleased` (upward arc),
-  `alarmed` (small open ellipse).
-- viewBox is `0 0 100 100`, rendered at 60×60 px.
-- Has `aria-hidden="true"`.
+Implement `GhostSvg` with the three-expression inline SVG exactly as specified
+in design section 5. The ghost must:
+- Have a rounded rectangular white body with a ragged bottom (three bumps).
+- Wear a bright green visor (`#3a7d44` rect) with a darker brim (`#2d6235`).
+- Have two dot eyes whose radius changes by expression.
+- Have a mouth that changes by expression:
+  - **calm**: straight line `x1=40 y1=63 x2=60 y2=63`.
+  - **pleased**: upward arc `M 38 62 Q 50 70 62 62`.
+  - **alarmed**: filled ellipse `cx=50 cy=63 rx=5 ry=6`.
+- viewBox `0 0 100 100`, rendered at 60×60 px, `aria-hidden="true"`.
 
 ### 7b — Message logic
 
-Implement `GhostClerk` as a component that accepts `source`, `replay` state,
-`chainResult`, and `overallVerdict`, and derives the message string and
-expression from the state table in the design. Use the exact messages from
-the table:
+Implement `GhostClerk` accepting props `source`, `replayState`, `chainOk`,
+`overallVerdict`, `tamperTargetSelected`. Derive expression and message from the
+priority-ordered state table:
 
-| Condition | Expression | Message |
-|---|---|---|
-| `source === "loading"` | calm | "Loading the paper trail…" |
-| `source === "demo"` and no session yet | calm | "I've pre-loaded the interesting session. Press Play when ready." |
-| session selected, `state === "idle"` | calm | "Press Play to start. I'll stay here and watch." |
-| `state === "playing"` | calm | "Printing… press Pause any time, or Step to go one line at a time." |
-| `state === "paused"` | calm | "Paused. Press Play to continue, or Step to advance one line." |
-| `state === "done"`, no verdict | calm | "All done. No verdict yet — click 'Check this statement' to find out." |
-| `state === "done"`, SUPPORTED | pleased | "Everything checks out. The agent told the whole truth. Remarkable." |
-| `state === "done"`, CONTRADICTED | alarmed | "The agent left something out. The red circle shows what the witness saw." |
-| `state === "done"`, UNVERIFIED | calm | "Some claims couldn't be confirmed. Not the same as wrong — just unproven." |
-| chain torn | alarmed | "Ah. Someone's been at the paper. Click Restore to fix it." |
-| tamper target selected | calm | "Line selected. Click 'Tamper with the paper' to corrupt it." |
+1. `!chainOk` → alarmed / "Ah. Someone's been at the paper. Click Restore to fix it."
+2. `tamperTargetSelected` → calm / "Line selected. Click 'Tamper with the paper' to corrupt it."
+3. `source === "loading"` → calm / "Loading the paper trail…"
+4. `source === "demo" && replayState === "idle"` → calm / "I've pre-loaded the interesting session. Press Play when ready."
+5. `replayState === "idle"` → calm / "Press Play to start. I'll stay here and watch."
+6. `replayState === "playing"` → calm / "Printing… press Pause any time, or Step to go one line at a time."
+7. `replayState === "paused"` → calm / "Paused. Press Play to continue, or Step to advance one line."
+8. `replayState === "done" && overallVerdict === "SUPPORTED"` → pleased / "Everything checks out. The agent told the whole truth. Remarkable."
+9. `replayState === "done" && overallVerdict === "CONTRADICTED"` → alarmed / "The agent left something out. The red circle shows what the witness saw."
+10. `replayState === "done" && overallVerdict === "UNVERIFIED"` → calm / "Some claims couldn't be confirmed. Not the same as wrong — just unproven."
+11. `replayState === "done"` → calm / "All done. No verdict yet — click 'Check this statement' to find out."
+
+The message span has `aria-live="polite"`.
 
 ### 7c — Layout
 
-Apply the CSS from the design:
-- Wide (> 640 px): `position: fixed; bottom: 1rem; right: 1rem; width: 220px`.
-- Narrow (≤ 640 px): full-width bottom bar, `height: 2.6rem`, `white-space: nowrap`.
-- Hidden in print.
+Apply the CSS from design section 5:
+- Wide (> 640 px): fixed bottom-right, 220 px wide.
+- Narrow (≤ 640 px): fixed full-width bottom bar, 2.6 rem tall.
+- Hidden in `@media print`.
 
 **Check:**
 ```powershell
-cd web && npm run dev
+cd web && npm run build
+npx vitest run
 ```
-Open the page. The ghost should be visible in the bottom-right corner with a
-calm expression and the first-load message. No console errors.
 
 ---
 
 ## Task 8 — Tamper demo, "Check this statement", accessibility, print
 
-**Delivers:** tamper/restore wiring in `App.tsx`, "Check this statement" in
-`SessionSpool.tsx`, print styles complete, accessibility pass
+**Delivers:** full tamper/restore wiring, "Check this statement" functional,
+accessibility pass, print styles complete. No stubs remain anywhere.
 
 ### 8a — Tamper and restore in `App.tsx`
 
-Wire `useEntries`'s `tamper(seq)` and `restore()` to:
-- A click handler on `<PrintLine>` that sets `tamperTarget` state.
-- The "Tamper with the paper" button: calls `tamper(tamperTarget)` if set,
-  otherwise finds the first `execute_pwsh` entry in the current session and
-  calls `tamper` with its seq.
-- The "Restore" button: calls `restore()` and clears `tamperTarget`.
+Wire `useEntries`'s `tamper(seq)` and `restore()`:
 
-Both buttons must be rendered as `<button>` elements with the exact text
-specified in AC4.13c ("Tamper with the paper") and an accessible label for
-Restore.
+- `<PrintLine onSelect>` calls `setTamperTarget(entry.seq)` when clicked;
+  clicking the already-selected line clears `tamperTarget`.
+- "Tamper with the paper" button: calls `tamper(tamperTarget)` if set,
+  otherwise finds the first entry in the current session where
+  `data.tool_name === "execute_pwsh"` and calls `tamper` with its seq; falls
+  back to the last entry if none found.
+- "Restore" button: calls `restore()` and `setTamperTarget(null)`.
+- Selected line gets CSS class `print-line--tamper-target` (yellow background).
+- Neither button is shown in static demo mode (live mode only), but the demo
+  mode still allows tampering via line click and the button for the interactive
+  demo. The tamper feature is always available regardless of mode.
 
-Selected lines get a CSS class `print-line--tamper-target` for highlighting
-(subtle yellow background).
+### 8b — Live polling refinements in `useEntries`
 
-### 8b — "Check this statement" in `SessionSpool.tsx`
+Confirm the two behaviours specified in task 6b hold:
+1. Polling never overwrites `displayed` when it differs from `originalRef`
+   (tampered view is preserved until Restore is clicked).
+2. When new entries arrive and no tamper is active, `displayed` is updated but
+   `cursor` in `useReplay` is not reset (new lines appear beyond the current
+   replay position).
 
-When `source === "api"` and the session's `hasUnverifiedStatement` is true,
-render a `<button>Check this statement</button>`. On click:
-1. Call `POST /api/verify/{session_id}/{statementIndex}`.
-2. On success, trigger an immediate re-fetch of entries from the API (call a
-   callback passed in as `onVerified`).
-3. Show a spinner or disabled state while the request is in flight.
-4. On error, show a brief inline error message.
+The check for "tampered" is `displayed !== originalRef.current` (referential
+inequality, since `tamper()` always produces a new array). Do not use
+deep-equality — reference comparison is sufficient and cheap.
 
 ### 8c — Accessibility pass
 
-Ensure all interactive elements (`<SessionSpool>`, Play, Pause, Step, speed
-selector, Tamper, Restore, Tear off, "Check this statement") are:
-- `<button>` or `<a>` elements (no `div` with `onClick` as the sole affordance).
-- Have visible `:focus-visible` outlines (add to `paper.css`: 
-  `button:focus-visible, a:focus-visible { outline: 2px solid #2d6a2d; outline-offset: 2px; }`).
-- Activatable with Enter and Space (native for `<button>`).
+Verify all interactive elements:
+- Are `<button>` or `<a>` with no `onClick` on bare `<div>`.
+- Have `:focus-visible` outlines (already in `paper.css`).
+- Have `aria-label` where text is absent or ambiguous.
+- `<GhostClerk>`'s message span has `aria-live="polite"`.
 
-Add `aria-label` to icon-only buttons. Add `aria-live="polite"` to the ghost
-clerk message span.
+### 8d — Print stylesheet
 
-### 8d — Print stylesheet complete
-
-Verify `print.css` hides all non-report elements and that `<PrintLine>` for
-verdict entries renders the evidence-line reference in parentheses (this is
-already in `entryText.ts`; confirm it appears). The chain status must appear
-in the print output via a `.print-chain-status` element rendered by `App.tsx`
-outside the hidden controls.
+Confirm `print.css` renders correctly:
+- Chain status appears as `.print-chain-status` outside `.tamper-controls`.
+- Per-path verdict lines include `(line N)` from `entryText`.
+- Undeclared lines appear before the overall verdict (the overall line is last).
+- Background images and colours are removed in print.
 
 **Check:**
 ```powershell
-cd web && npm run dev
+cd web && npm run build
+npx vitest run
 ```
-Manually verify:
-1. Click "Tamper with the paper" on the demo session — "Paper torn at line N"
-   appears and a tear graphic is visible at that line.
-2. Click "Restore" — "Paper intact" returns and the tear disappears.
-3. No console errors or accessibility warnings in the browser's DevTools.
-4. `npx vitest run` still passes.
+All tests pass, build succeeds.
 
 ---
 
@@ -709,10 +1057,13 @@ Manually verify:
 
 ### 9a — Regenerate demo ledger
 
-Run `python sample/make_demo_ledger.py` from the project root to ensure
-`web/public/demo/ledger.jsonl` reflects the current verifier output (which now
-stores `undeclared` in the overall entry). Confirm the file is non-empty and
-the demo chain test in Vitest passes.
+```powershell
+python sample/make_demo_ledger.py
+```
+
+Confirm `web/public/demo/ledger.jsonl` is non-empty and the demo chain test in
+Vitest passes. The file must include an overall verdict entry for Session B
+with `data.undeclared` containing `sample/notes.txt`.
 
 ### 9b — Full Python test suite
 
@@ -739,24 +1090,118 @@ All tests must pass, including:
 - `chainCheck.test.ts` (fixture hash + demo ledger chain intact).
 - `Stamp.test.tsx`.
 - `ChainStatus.test.tsx`.
+- `App.test.tsx` (all four assertions).
 
-### 9d — Static build smoke test
+### 9d — Static build
 
 ```powershell
 cd web && npm run build
 ```
 
-Build must complete with no errors. Open `web/dist/index.html` in a browser
-(via a local file server or `npx serve dist`). Confirm:
-- The demo data loads from `./demo/ledger.jsonl`.
-- Both sessions appear as spools.
-- The CONTRADICTED session is preselected.
-- The ghost clerk is visible and shows the first-load message.
-- "Paper intact" is shown.
+Build must complete with no errors. No long-running server is started.
 
 **Check (final):**
 ```powershell
 pytest tests/ -q
-cd web && npx vitest run
+cd web && npx vitest run && npm run build
 ```
-Both commands exit 0 with no failures.
+All three commands exit 0.
+
+---
+
+## Task 10 — GitHub Actions Pages workflow
+
+**Delivers:** `.github/workflows/pages.yml`
+
+### 10a — Workflow file
+
+Create `.github/workflows/pages.yml`:
+
+```yaml
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build
+        run: npm run build
+        working-directory: web
+        env:
+          VITE_REPO_URL: https://github.com/${{ github.repository }}
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+Key points:
+- `VITE_REPO_URL` is injected from `github.repository` so the footer link is
+  always correct without any hardcoded organisation name.
+- `npm ci` is used (not `npm install`) for reproducible installs.
+- `cache-dependency-path: web/package-lock.json` caches the `web/node_modules`
+  install correctly.
+- `workflow_dispatch` allows manual re-runs from the Actions tab.
+
+### 10b — Confirm `web/public/demo/ledger.jsonl` is committed
+
+The workflow builds a static site that depends on the demo ledger being present
+in the repository. Confirm:
+
+```powershell
+git status web/public/demo/ledger.jsonl
+```
+
+If the file shows as untracked or modified, add it:
+
+```powershell
+git add web/public/demo/ledger.jsonl
+```
+
+The `.gitignore` must not contain `web/public/demo/`.
+
+**Check:**
+```powershell
+Get-Content .github\workflows\pages.yml | Select-Object -First 5
+git status web/public/demo/ledger.jsonl
+```
+The workflow file must exist and the ledger must be tracked by git.

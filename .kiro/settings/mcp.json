@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "paper-trail": {
+      "command": "python",
+      "args": ["-m", "papertrail.mcp_server"],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

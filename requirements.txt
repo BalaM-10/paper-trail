@@ -1,2 +1,6 @@
-pytest
+﻿pytest
 hypothesis
+fastapi
+uvicorn[standard]
+httpx
+mcp>=2,<3

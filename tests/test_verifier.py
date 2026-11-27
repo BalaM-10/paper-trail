@@ -358,3 +358,54 @@ def test_per_path_verdict_has_witness_seq(tmp_path):
     assert per_path, "expected per-path verdict entries"
     for e in per_path:
         assert "witness_seq" in e["data"]
+
+
+# ---------------------------------------------------------------------------
+# Undeclared changes are stored on the overall verdict entry
+# ---------------------------------------------------------------------------
+
+def test_undeclared_stored_in_overall_entry(tmp_path):
+    sid = "sess-undecl-stored"
+    stop = _make_witness_stop_entry(
+        tmp_path, sid, {"created": [], "deleted": ["secret.txt"], "modified": []}
+    )
+    stmt = _make_statement(tmp_path, sid, witness_seq=stop["seq"])
+    _run_verify(tmp_path, stmt, sid)
+    ledger_path = tmp_path / ".papertrail" / "ledger.jsonl"
+    entries = ledger_mod.read(ledger_path)
+    overall = next(
+        e for e in entries
+        if e["kind"] == "verdict"
+        and e["data"].get("kind_detail") == "statement_overall"
+    )
+    assert overall["data"]["undeclared"] == [{"path": "secret.txt", "change": "deleted"}]
+
+
+def test_undeclared_idempotent_round_trip(tmp_path):
+    sid = "sess-undecl-idem"
+    stop = _make_witness_stop_entry(
+        tmp_path, sid, {"created": [], "deleted": ["secret.txt"], "modified": []}
+    )
+    stmt = _make_statement(tmp_path, sid, witness_seq=stop["seq"])
+    first = _run_verify(tmp_path, stmt, sid)
+    ledger_path = tmp_path / ".papertrail" / "ledger.jsonl"
+    count = len(ledger_mod.read(ledger_path))
+    second = _run_verify(tmp_path, stmt, sid)
+    assert second["undeclared"] == first["undeclared"] == [{"path": "secret.txt", "change": "deleted"}]
+    assert len(ledger_mod.read(ledger_path)) == count
+
+
+def test_explicit_ledger_path_ignores_environment(tmp_path, monkeypatch):
+    """verify(ledger_path=...) writes there even when PAPERTRAIL_ROOT is unset."""
+    monkeypatch.delenv("PAPERTRAIL_ROOT", raising=False)
+    sid = "sess-explicit-path"
+    stop = _make_witness_stop_entry(
+        tmp_path, sid, {"created": ["a.py"], "deleted": [], "modified": []}
+    )
+    stmt = _make_statement(tmp_path, sid, files_created=["a.py"], witness_seq=stop["seq"])
+    ledger_path = tmp_path / ".papertrail" / "ledger.jsonl"
+    entries = ledger_mod.read(ledger_path)
+    result = verify(stmt, entries, sid, ledger_path=ledger_path)
+    assert result["overall"] == "SUPPORTED"
+    kinds = [e["kind"] for e in ledger_mod.read(ledger_path)]
+    assert kinds.count("verdict") == 2   # one per-path + one overall

@@ -1,4 +1,4 @@
-# Design — Paper Trail Printout
+﻿# Design — Paper Trail Printout
 
 ## Overview
 
@@ -325,47 +325,41 @@ def handle_verify_statement(root: Path, session_id: str, n: int) -> dict:
 
 ### MCP wiring
 
+The installed SDK is `mcp` 2.x, whose high-level `MCPServer` replaces the 1.x
+`Server` decorators. `requirements.txt` pins `mcp>=2,<3`. The SDK is imported
+lazily inside `build_server()` so the handlers, and the module itself, import
+without it. stdout carries the protocol, so nothing in the module prints.
+
 ```python
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp import types
-import asyncio, json
+def build_server():
+    from mcp.server import MCPServer
+    server = MCPServer("paper-trail")
 
-server = Server("paper-trail")
+    @server.tool()
+    def list_sessions() -> list[dict]:
+        return handle_list_sessions(_root())
 
-@server.list_tools()
-async def list_tools() -> list[types.Tool]:
-    return [
-        types.Tool(name="list_sessions",    description="List all sessions.", inputSchema={"type":"object","properties":{}}),
-        types.Tool(name="get_entries",      description="Get all records for a session.",
-                   inputSchema={"type":"object","properties":{"session_id":{"type":"string"}},"required":["session_id"]}),
-        types.Tool(name="check_chain",      description="Check paper integrity.", inputSchema={"type":"object","properties":{}}),
-        types.Tool(name="verify_statement", description="Verify a session's statement.",
-                   inputSchema={"type":"object","properties":{"session_id":{"type":"string"},"n":{"type":"integer"}},"required":["session_id","n"]}),
-    ]
+    @server.tool()
+    def get_entries(session_id: str) -> list[dict]:
+        return handle_get_entries(_root(), session_id)
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
-    root = _root()
-    if name == "list_sessions":
-        result = handle_list_sessions(root)
-    elif name == "get_entries":
-        result = handle_get_entries(root, arguments["session_id"])
-    elif name == "check_chain":
-        result = handle_check_chain(root)
-    elif name == "verify_statement":
-        result = handle_verify_statement(root, arguments["session_id"], arguments["n"])
-    else:
-        result = {"error": f"Unknown tool: {name}"}
-    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    @server.tool()
+    def check_chain() -> dict:
+        return handle_check_chain(_root())
 
-async def _main():
-    async with stdio_server() as (r, w):
-        await server.run(r, w, server.create_initialization_options())
+    @server.tool()
+    def verify_statement(session_id: str, n: int = 1) -> dict:
+        return handle_verify_statement(_root(), session_id, n)
 
-if __name__ == "__main__":
-    asyncio.run(_main())
+    return server
+
+def main() -> None:
+    build_server().run(transport="stdio")
 ```
+
+`handle_verify_statement` rejects session ids outside `[A-Za-z0-9_.-]` or
+containing `..` (the id becomes part of a file name), and passes `ledger_path`
+to `verifier.verify` explicitly.
 
 ### `.kiro/settings/mcp.json`
 
@@ -438,27 +432,39 @@ web/
 ```ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
   base: "./",
   define: {
-    __REPO_URL__: JSON.stringify("https://github.com/YOUR_ORG/paper-trail"),
+    __REPO_URL__: JSON.stringify(process.env.VITE_REPO_URL ?? "#"),
   },
   server: {
     proxy: { "/api": "http://127.0.0.1:8765" },
+  },
+  resolve: {
+    alias: {
+      "@@fixtures": fileURLToPath(new URL("../tests/fixtures", import.meta.url)),
+    },
   },
   test: {
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/__tests__/setup.ts",
+    resolve: {
+      alias: {
+        "@@fixtures": fileURLToPath(new URL("../tests/fixtures", import.meta.url)),
+      },
+    },
   },
 });
 ```
 
-`__REPO_URL__` is used in `<Footer>`. The placeholder must be replaced with
-the real repository URL before publishing; it must not be an empty string in
-the committed config.
+`__REPO_URL__` is set from `process.env.VITE_REPO_URL` at build time. It
+falls back to `"#"` when the variable is not set, so no placeholder
+organisation name appears in the committed config. In GitHub Actions the
+workflow injects `VITE_REPO_URL: https://github.com/${{ github.repository }}`.
 
 ---
 
@@ -547,65 +553,78 @@ export function useEntries() {
   const originalRef               = useRef<Entry[]>([]);   // untampered copy
   const [displayed, setDisplayed] = useState<Entry[]>([]);
 
+  function _applyFresh(data: Entry[]) {
+    setEntries(data);
+    originalRef.current = data;
+    setDisplayed(data);
+  }
+
   // Initial load
   useEffect(() => {
     fetch("/api/ledger")
       .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then((data: Entry[]) => {
-        setEntries(data);
-        originalRef.current = data;
-        setDisplayed(data);
-        setSource("api");
-      })
+      .then((data: Entry[]) => { _applyFresh(data); setSource("api"); })
       .catch(() =>
         fetch("./demo/ledger.jsonl")
           .then(r => r.text())
           .then(text => {
             const data = text.trim().split("\n").filter(Boolean)
                              .map(l => JSON.parse(l) as Entry);
-            setEntries(data);
-            originalRef.current = data;
-            setDisplayed(data);
+            _applyFresh(data);
             setSource("demo");
           })
       );
   }, []);
 
-  // Polling (live mode only)
+  // Polling (live mode only). Never overwrites a tampered view.
   useEffect(() => {
     if (source !== "api") return;
     const id = setInterval(() => {
       fetch("/api/ledger")
         .then(r => r.ok ? r.json() : Promise.reject())
         .then((data: Entry[]) => {
-          if (data.length > entries.length) {
+          if (data.length > originalRef.current.length) {
+            // Update the untampered backing store
             setEntries(data);
             originalRef.current = data;
-            setDisplayed(data);
+            // Only update displayed if the view is not currently tampered
+            setDisplayed(prev =>
+              prev === originalRef.current ? data : prev
+            );
           }
         })
         .catch(() => {});
     }, 2000);
     return () => clearInterval(id);
-  }, [source, entries.length]);
+  }, [source]);
 
   function tamper(seq: number) {
     const copy = displayed.map(e =>
       e.seq === seq ? { ...e, data: { ...(e.data as object), _tampered: true } } : e
     );
-    setDisplayed(copy);
+    setDisplayed(copy);   // copy !== originalRef.current → tampered flag
   }
 
   function restore() {
     setDisplayed(originalRef.current);
   }
 
-  return { entries: displayed, source, tamper, restore };
+  function forceRefresh() {
+    if (source !== "api") return;
+    fetch("/api/ledger")
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((data: Entry[]) => _applyFresh(data))
+      .catch(() => {});
+  }
+
+  return { entries: displayed, source, tamper, restore, forceRefresh };
 }
 ```
 
-`displayed` is what `useChainCheck` and the UI consume. `tamper()` mutates
-`displayed` in memory; `restore()` resets it from `originalRef`.
+Polling checks `data.length > originalRef.current.length` before updating.
+When updating, it uses `setDisplayed(prev => prev === originalRef.current ?
+data : prev)` — reference equality, not deep comparison — so a tampered view
+is preserved until `restore()` is called explicitly.
 
 ---
 
@@ -1016,9 +1035,10 @@ function App() {
 }
 ```
 
-`synthesiseUndeclared` takes the session entries, finds the overall verdict
-entry, and inserts a synthetic `{kind: "undeclared", data: {...}}` line for
-each item in `data.undeclared` immediately after the overall verdict line.
+`synthesiseUndeclared` takes the session entries and inserts a synthetic
+`{kind: "undeclared", data: {...}}` line for each item in `data.undeclared`
+immediately **before** the overall verdict line, so the overall verdict stamp
+is always the last line in the session.
 
 ---
 
@@ -1127,7 +1147,7 @@ load it and assert `computed == expected_hash`.
 import { describe, it, expect } from "vitest";
 import { canonicalJson } from "../lib/canonicalJson";
 import { checkChain } from "../lib/chainCheck";
-import fixture from "../../../../tests/fixtures/hash_fixture.json";
+import fixture from "@@fixtures/hash_fixture.json";
 import demoLedgerRaw from "../../public/demo/ledger.jsonl?raw";
 
 describe("canonicalJson + SHA-256 matches Python", () => {
@@ -1153,8 +1173,9 @@ describe("demo ledger chain is intact", () => {
 ```
 
 The Vite `?raw` import reads `demo/ledger.jsonl` as a string at test time.
-`vite.config.ts` resolves the fixture path alias `@@fixtures` to
-`../../tests/fixtures` so the import above works.
+The `@@fixtures` alias resolves to `../tests/fixtures` (one level up from
+`web/`) via `fileURLToPath(new URL("../tests/fixtures", import.meta.url))` in
+`vite.config.ts`, and `"../tests/fixtures/*"` in `tsconfig.app.json` paths.
 
 ### `tests/test_import_isolation.py`
 
@@ -1190,7 +1211,7 @@ def test_no_heavy_imports():
 fastapi
 uvicorn[standard]
 httpx
-mcp
+mcp>=2,<3
 ```
 
 These four packages must only be imported in `api.py`, `mcp_server.py`, and
