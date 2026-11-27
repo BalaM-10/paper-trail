@@ -20,7 +20,7 @@ comes from the ledger, which never holds them.
 import textwrap
 from pathlib import Path
 
-from papertrail import ledger, rolls
+from papertrail import ledger, rolls, watch
 from papertrail.outcome import NO_STATEMENT, is_overall, valid_session_id
 
 WIDTH = 80
@@ -95,8 +95,19 @@ def between_turns_text(d: dict) -> str:
     ]
     listing = "; ".join(f"{label} {', '.join(files)}" for label, files in groups if files) or "no changes"
     if d.get("unfinished") is True:
-        return f"Since the unfinished turn before this one: {listing}. The agent may have made some of these changes."
-    return f"Between turns, outside the agent: {listing}."
+        text = f"Since the unfinished turn before this one: {listing}. The agent may have made some of these changes."
+    else:
+        text = f"Between turns, outside the agent: {listing}."
+    setup = [f for f in _list(d.get("setup_changed")) if isinstance(f, str)]
+    if setup:
+        text += f" The recording setup changed: {', '.join(setup)}."
+    return text
+
+
+def setup_changed_text(d: dict) -> str:
+    """The loud line for a turn in which the recording setup changed."""
+    files = [f for f in _list(d.get("files")) if isinstance(f, str)]
+    return watch.loud_line(files)
 
 
 def command_sentence(command) -> str:
@@ -132,6 +143,8 @@ def entry_text(entry: dict) -> str:
             return "Witness took a snapshot of the project at the start of this turn."
         if d.get("event") == "between_turns":
             return between_turns_text(d)
+        if d.get("event") == "setup_changed":
+            return setup_changed_text(d)
         diff = d.get("diff") or {}
         groups = [
             ("Created", _list(diff.get("created"))),
@@ -242,9 +255,14 @@ def render(entries: list[dict], session_id: str, chain: tuple[bool, int | None])
             out.extend(_wrap(header, WIDTH))
         out.append(rule)
         for number, text in rows:
+            loud = text.startswith(watch.LOUD_START)  # the setup line stands out on paper
+            if loud:
+                out.append("*" * WIDTH)
             first, *rest = _wrap(text, WIDTH - gutter)
             out.append(number.rjust(gutter - 2) + "  " + first)
             out.extend(" " * gutter + more for more in rest)
+            if loud:
+                out.append("*" * WIDTH)
         out.append(rule)
 
     if not session_rolls:  # a session with no records still prints a heading

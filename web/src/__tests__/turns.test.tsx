@@ -42,7 +42,7 @@ describe("one roll per turn, in the list of rolls", () => {
     expect(second).toHaveTextContent("turn 2 of 2");
     expect(first.querySelector(".stamp")).toHaveTextContent("SUPPORTED");
     expect(second.querySelector(".stamp")).toHaveTextContent("SUPPORTED");
-    expect(within(nav).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(nav).getAllByRole("listitem")).toHaveLength(6);
   });
 
   it("says nothing about turns for a session that has only one", async () => {

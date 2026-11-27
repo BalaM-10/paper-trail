@@ -5,11 +5,11 @@ import { makeRecord } from "./buildRecord";
 import { demoEntries } from "./demo";
 
 describe("what the record adds up to", () => {
-  it("counts the demo: four sessions in five turns, three statements checked, two matched, one said nothing", () => {
+  it("counts the demo: five sessions in six turns, five statements checked, four matched, one said nothing", () => {
     const totals = buildTotals(demoEntries);
-    expect(totals).toEqual({ sessions: 4, turns: 5, lines: 34, checked: 4, matched: 3, silent: 1, unchecked: 0 });
+    expect(totals).toEqual({ sessions: 5, turns: 6, lines: 44, checked: 5, matched: 4, silent: 1, unchecked: 0 });
     expect(totalsText(totals)).toBe(
-      "4 sessions, 5 turns, 34 lines. 4 statements checked, 3 matched the evidence. 1 session changed files and said nothing.",
+      "5 sessions, 6 turns, 44 lines. 5 statements checked, 4 matched the evidence. 1 session changed files and said nothing.",
     );
   });
 

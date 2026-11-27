@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { ChainResult } from "../lib/chainCheck";
-import { entryText, verdictWord } from "../lib/entryText";
+import { entryText, isSetupChanged, verdictWord } from "../lib/entryText";
 import type { DisplayEntry } from "../lib/synthesiseUndeclared";
 import { ChainStatus } from "./ChainStatus";
 
@@ -30,6 +30,7 @@ export const PrintReport = memo(function PrintReport({ sessionId, turn, title, c
     (l) => l.kind === "verdict" && l.data.kind_detail === "statement_overall",
   );
   const between = lines.filter((l) => l.kind === "witness" && l.data.event === "between_turns");
+  const setup = lines.filter(isSetupChanged);
   const last = overall[overall.length - 1];
   const silent = last !== undefined && last.data.verdict === "NO_STATEMENT";
 
@@ -42,6 +43,11 @@ export const PrintReport = memo(function PrintReport({ sessionId, turn, title, c
       <p className="print-chain-status">
         {chain ? <ChainStatus ok={chain.ok} brokenAt={chain.ok ? null : chain.brokenAt} /> : "Paper not checked"}
       </p>
+      {setup.map((l) => (
+        <p key={l.seq} className="print-setup">
+          {entryText(l)}
+        </p>
+      ))}
       {between.map((l) => (
         <p key={l.seq} className="print-between">
           {entryText(l)}

@@ -69,7 +69,7 @@ def test_the_demo_record_has_the_turn_session():
     by_session = {}
     for r in rolls.split(entries):
         by_session.setdefault(r.session_id, []).append(r)
-    assert [len(v) for v in by_session.values()] == [1, 1, 1, 2]
+    assert [len(v) for v in by_session.values()] == [1, 1, 1, 2, 1]
     d1, d2 = by_session["demo-session-d"]
     assert (d1.number, d2.number, d2.count) == (1, 2, 2)
     assert d1.overall == d2.overall == "SUPPORTED"

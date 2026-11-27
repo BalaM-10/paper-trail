@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from papertrail import ledger as ledger_mod
-from sample.make_demo_ledger import SESSION_A, SESSION_B, SESSION_C, SESSION_D, generate
+from sample.make_demo_ledger import SESSION_A, SESSION_B, SESSION_C, SESSION_D, SESSION_E, generate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 COMMITTED = PROJECT_ROOT / "web" / "public" / "demo" / "ledger.jsonl"
@@ -60,9 +60,9 @@ def test_chain_is_intact(demo):
     assert ledger_mod.verify_chain(out) == (True, None)
 
 
-def test_four_sessions_in_order(demo):
+def test_five_sessions_in_order(demo):
     _, entries = demo
-    assert list(dict.fromkeys(e["session_id"] for e in entries)) == [SESSION_A, SESSION_B, SESSION_C, SESSION_D]
+    assert list(dict.fromkeys(e["session_id"] for e in entries)) == [SESSION_A, SESSION_B, SESSION_C, SESSION_D, SESSION_E]
 
 
 def test_sessions_a_and_b_have_every_kind_of_record(demo):
@@ -247,3 +247,16 @@ def test_the_committed_demo_ledger_is_current(tmp_path):
 def test_the_committed_demo_ledger_is_utf8_without_a_byte_order_mark():
     assert not COMMITTED.read_bytes().startswith(b"\xef\xbb\xbf")
     json.loads(COMMITTED.read_text(encoding="utf-8").splitlines()[0])
+
+
+def test_session_e_edits_a_hook_honestly_and_the_record_marks_it(demo):
+    _, entries = demo
+    mine = _session(entries, SESSION_E)
+    (setup,) = [e for e in mine if e["data"].get("event") == "setup_changed"]
+    assert setup["data"]["files"] == [".kiro/hooks/record.py"]
+    (overall,) = [e for e in mine if e["data"].get("kind_detail") == "statement_overall"]
+    assert overall["data"]["verdict"] == "SUPPORTED"
+    assert overall["data"]["undeclared"] == []
+    # the loud line comes straight after the stop line it is about
+    stop = next(e for e in mine if e["data"].get("event") == "stop")
+    assert setup["seq"] == stop["seq"] + 1

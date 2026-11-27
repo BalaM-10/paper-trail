@@ -65,9 +65,25 @@ export function betweenTurnsText(d: Record<string, unknown>): string {
       .filter(([, files]) => files.length > 0)
       .map(([label, files]) => `${label} ${files.join(", ")}`)
       .join("; ") || "no changes";
-  return d.unfinished === true
-    ? `Since the unfinished turn before this one: ${listing}. The agent may have made some of these changes.`
-    : `Between turns, outside the agent: ${listing}.`;
+  const text =
+    d.unfinished === true
+      ? `Since the unfinished turn before this one: ${listing}. The agent may have made some of these changes.`
+      : `Between turns, outside the agent: ${listing}.`;
+  const setup = listOf(d.setup_changed).filter((f) => typeof f === "string");
+  return setup.length > 0 ? `${text} The recording setup changed: ${setup.join(", ")}.` : text;
+}
+
+/** The loud line for a turn in which the recording setup changed. Twin of watch.loud_line. */
+export function setupChangedText(d: Record<string, unknown>): string {
+  const files = listOf(d.files).filter((f) => typeof f === "string");
+  return `${SETUP_LOUD_START}${files.join(", ")}. Read this turn's record with care.`;
+}
+
+export const SETUP_LOUD_START = "RECORDING SETUP CHANGED DURING THIS TURN: ";
+
+/** True for the record that says the recording setup changed during a turn. */
+export function isSetupChanged(entry: { kind: string; data: Record<string, unknown> }): boolean {
+  return entry.kind === "witness" && entry.data.event === "setup_changed";
 }
 
 /** The last line of a checked statement. */
@@ -126,6 +142,7 @@ export function entryText(entry: Entry): string {
       if (d.event === "start") return "Witness took a snapshot of the project.";
       if (d.event === "turn") return "Witness took a snapshot of the project at the start of this turn.";
       if (d.event === "between_turns") return betweenTurnsText(d);
+      if (d.event === "setup_changed") return setupChangedText(d);
       const diff = (d.diff ?? {}) as Record<string, unknown>;
       const groups: [string, string[]][] = [
         ["Created", listOf(diff.created)],

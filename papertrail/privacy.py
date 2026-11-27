@@ -178,8 +178,24 @@ def _shorten(match: re.Match[str]) -> str:
 
 
 def scrub(text: str, root: Path, home: Path, terms: dict[str, str] | None = None) -> str:
-    """`text` with the project folder, the home folder, other absolute paths and names removed."""
+    """
+    `text` with the project folder, the home folder, other absolute paths and names removed.
+
+    Replacing a name can leave a path that was glued to it (a user name directly before a drive path) standing
+    on its own, so the pass is repeated until the text no longer changes. A second pass
+    never changes text that the first one left clean.
+    """
     terms = identity_terms() if terms is None else terms
+    result = _scrub_once(text, root, home, terms)
+    for _ in range(3):
+        again = _scrub_once(result, root, home, terms)
+        if again == result:
+            break
+        result = again
+    return result
+
+
+def _scrub_once(text: str, root: Path, home: Path, terms: dict[str, str]) -> str:
     result = text
     for folder, marker in ((root, "."), (home, "~")):
         pattern = _folder_pattern(str(folder))

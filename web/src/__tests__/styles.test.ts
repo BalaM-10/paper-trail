@@ -510,3 +510,20 @@ describe("a long roll title", () => {
     }
   });
 });
+
+describe("the loud setup line", () => {
+  it("is red on the paper with enough contrast, and is not a box that scrolls", () => {
+    const vars = variables(paperCss);
+    expect(contrast(vars["red"], vars["paper-bg"])).toBeGreaterThanOrEqual(4.5);
+    expect(valueOf(paperCss, ".print-line--setup .print-line__text", "color")).toBe("var(--red)");
+    expect(valueOf(paperCss, ".print-line--setup", "box-shadow")).toMatch(/inset 5px 0 0 var\(--red\)/);
+    for (const block of blocks(paperCss, ".print-line--setup")) {
+      expect(prop(block, "overflow") ?? "").not.toMatch(/auto|scroll/);
+      expect(prop(block, "white-space") ?? "").not.toMatch(/nowrap|pre\b/);
+    }
+  });
+
+  it("is printed as its own bordered paragraph in the report", () => {
+    expect(valueOf(printCss, ".print-setup", "border")).toMatch(/solid/);
+  });
+});

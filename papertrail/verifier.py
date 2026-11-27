@@ -5,6 +5,7 @@ from pathlib import Path
 
 from papertrail import ledger as ledger_mod
 from papertrail.ignore import RULE_NAME as IGNORE_RULE, Matcher
+from papertrail.watch import is_setup
 from papertrail.witness import EXCLUDE
 
 
@@ -159,7 +160,9 @@ def verify(
                     "verdict":      "UNVERIFIED",
                     "evidence_seq": [],
                 })
-            elif _in_excluded(path) or (matcher is not None and matcher.is_ignored(path)):
+            elif _in_excluded(path) or (
+                matcher is not None and not is_setup(path) and matcher.is_ignored(path)
+            ):
                 verdicts.append({
                     "path":         path,
                     "claim":        claim_key,

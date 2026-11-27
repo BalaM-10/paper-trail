@@ -633,6 +633,11 @@ select:focus-visible {
 .print-line--stamped .print-line__text { padding-right: 9.8rem; }
 /* What a person changed between two turns: a quiet note, not the agent's. No stamp, no ring. */
 .print-line--between .print-line__text { color: var(--muted); font-style: italic; }
+/* The recording setup changed during this turn: a loud line of its own, in red, with a bar. */
+.print-line--setup { background: rgba(192, 38, 45, 0.14); box-shadow: inset 5px 0 0 var(--red); }
+.print-line--setup .print-line__text { color: var(--red); font-weight: 900; letter-spacing: 0.02em; }
+/* notes about the page itself while EXCEPTIONS ONLY is on (not lines of the record) */
+.print-line--filter-note .print-line__text { color: var(--muted); font-style: italic; }
 .print-line--tamper-target { background: rgba(255, 221, 0, 0.45); }
 .print-line--empty { color: var(--muted); }
 

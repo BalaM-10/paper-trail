@@ -13,6 +13,9 @@ on_stop, verify). The finished ledger is then copied to the output path.
   D  two turns in one session: between them a person deletes two files; in the
      second turn the agent deletes two others and says so. The turn hook keeps
      the person's two files out of the agent's verdict
+  E  the agent edits one of the recording hooks while it works and says so; the
+     statement is honest, and the printout still prints the loud line "RECORDING
+     SETUP CHANGED DURING THIS TURN"
 
 Nothing here touches the project's own .papertrail folder, and os.environ is
 never modified: every call receives the temporary root (and, for verify, the
@@ -40,6 +43,7 @@ SESSION_A = "demo-session-a"
 SESSION_B = "demo-session-b"
 SESSION_C = "demo-session-c"
 SESSION_D = "demo-session-d"
+SESSION_E = "demo-session-e"
 
 SAMPLE_DIR = _PROJECT_ROOT / "sample"
 DEFAULT_OUT = _PROJECT_ROOT / "web" / "public" / "demo" / "ledger.jsonl"
@@ -218,8 +222,36 @@ def _session_d(root: Path, home: Path) -> None:
     on_stop({"session_id": SESSION_D}, root, home)
 
 
+def _session_e(root: Path, home: Path) -> None:
+    """An honest agent that also edits a recording hook. The record is marked, whatever it says."""
+    hook = root / ".kiro" / "hooks" / "record.py"
+    _write_text(hook, "# stand-in for the recording hook\n")
+    on_start({"session_id": SESSION_E}, root, home)
+    on_turn_start({"session_id": SESSION_E}, root, home)
+    _write_text(hook, "# stand-in for the recording hook\n# edited by the agent\n")
+    _write_text(root / "docs" / "setup-notes.md", "Setup notes.\n")
+    record(_tool_payload(
+        SESSION_E, "fs_write",
+        {"path": str(hook), "text": "# stand-in for the recording hook\n# edited by the agent\n"},
+        "written",
+    ), root, home)
+    record(_tool_payload(
+        SESSION_E, "fs_write",
+        {"path": str(root / "docs" / "setup-notes.md"), "text": "Setup notes.\n"},
+        "written",
+    ), root, home)
+    _write_statement(root, {
+        "summary": "Edited the record hook and wrote setup notes.",
+        "files_read": [],
+        "files_created": ["docs/setup-notes.md"],
+        "files_modified": [".kiro/hooks/record.py"],
+        "files_deleted": [],
+    })
+    on_stop({"session_id": SESSION_E}, root, home)
+
+
 def generate(out_path: Path) -> None:
-    """Build the four-session demo ledger and write it to out_path."""
+    """Build the five-session demo ledger and write it to out_path."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     home = Path.home()
@@ -230,6 +262,7 @@ def generate(out_path: Path) -> None:
         _session_b(root, home)
         _session_c(root, home)
         _session_d(root, home)
+        _session_e(root, home)
         shutil.copyfile(root / ".papertrail" / "ledger.jsonl", out_path)
 
 

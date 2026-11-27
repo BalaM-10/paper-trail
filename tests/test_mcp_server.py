@@ -320,7 +320,7 @@ def test_list_sessions_has_one_item_per_turn(demo_root):
     ]
     assert [s["entry_count"] for s in d] == [7, 8]
     assert [(s["session_id"], s["turn"], s["turns"]) for s in items if s["session_id"] != "demo-session-d"] == [
-        (SESSION_A, 1, 1), (SESSION_B, 1, 1), (SESSION_C, 1, 1),
+        (SESSION_A, 1, 1), (SESSION_B, 1, 1), (SESSION_C, 1, 1), ("demo-session-e", 1, 1),
     ]
     assert [s["title"] for s in items if s["session_id"] == SESSION_C] == ["No statement written"]
 

@@ -62,7 +62,7 @@ describe("splitRolls", () => {
     expect(splitSession([])).toEqual([]);
   });
 
-  it("splits the demo: three one-roll sessions and one of two turns", () => {
+  it("splits the demo: four one-roll sessions and one of two turns", () => {
     const rolls = splitRolls(demoEntries);
     expect(rolls.map((r) => `${r.sessionId}#${r.number}/${r.count}`)).toEqual([
       "demo-session-a#1/1",
@@ -70,6 +70,7 @@ describe("splitRolls", () => {
       "demo-session-c#1/1",
       "demo-session-d#1/2",
       "demo-session-d#2/2",
+      "demo-session-e#1/1",
     ]);
     expect(rolls.map((r) => r.title)).toEqual([
       "Read main.py and wrote a notes file.",
@@ -77,10 +78,11 @@ describe("splitRolls", () => {
       "No statement written",
       "Wrote the plan.",
       "Cleared two drafts.",
+      "Edited the record hook and wrote setup notes.",
     ]);
-    expect(rolls.map((r) => r.overallVerdict)).toEqual(["SUPPORTED", "CONTRADICTED", "NO_STATEMENT", "SUPPORTED", "SUPPORTED"]);
+    expect(rolls.map((r) => r.overallVerdict)).toEqual(["SUPPORTED", "CONTRADICTED", "NO_STATEMENT", "SUPPORTED", "SUPPORTED", "SUPPORTED"]);
     expect(rolls.every((r) => !r.hasUnverifiedStatement)).toBe(true);
-    expect(rolls.map((r) => r.statementIndex)).toEqual([1, 1, null, 1, 2]);
+    expect(rolls.map((r) => r.statementIndex)).toEqual([1, 1, null, 1, 2, 1]);
   });
 
   it("puts the between-turns line first in the roll that follows it", () => {

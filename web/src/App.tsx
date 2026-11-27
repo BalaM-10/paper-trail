@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import { BuildTotals } from "./components/BuildTotals";
 import { ChainStatus } from "./components/ChainStatus";
 import { Footer } from "./components/Footer";
+import { ExceptionNotes } from "./components/ExceptionNotes";
+import { ExceptionsKey } from "./components/ExceptionsKey";
 import { GhostClerk } from "./components/GhostClerk";
 import { Header } from "./components/Header";
 import { InkFilters } from "./components/InkFilters";
@@ -21,6 +23,7 @@ import { useFreshLine } from "./hooks/useFreshLine";
 import { useReplay } from "./hooks/useReplay";
 import type { Entry } from "./lib/chainCheck";
 import { fingerprintText } from "./lib/entryText";
+import { exceptionsOnly } from "./lib/exceptions";
 import { splitRolls, turnLabel } from "./lib/rolls";
 import { synthesiseUndeclared } from "./lib/synthesiseUndeclared";
 
@@ -35,6 +38,8 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
 
   const [picked, setPicked] = useState<string | null>(null);
   const [tamperTarget, setTamperTarget] = useState<number | null>(null);
+  // EXCEPTIONS ONLY: show only the lines that need a look. It only changes what is shown.
+  const [onlyExceptions, setOnlyExceptions] = useState(false);
 
   // The static demo opens on the interesting session: the one that is CONTRADICTED.
   const demoDefault =
@@ -46,10 +51,15 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
   const selectedRoll = rolls.find((r) => r.key === selected) ?? null;
 
   const sessionEntries = selectedRoll ? selectedRoll.entries : NO_ENTRIES;
-  const lines = useMemo(() => synthesiseUndeclared(sessionEntries), [sessionEntries]);
-  const replay = useReplay(lines.length, selected, source === "api");
-
+  const allLines = useMemo(() => synthesiseUndeclared(sessionEntries), [sessionEntries]);
   const brokenAt = chain && !chain.ok ? chain.brokenAt : null;
+  const filtered = useMemo(
+    () => (onlyExceptions ? exceptionsOnly(allLines, brokenAt) : { shown: allLines, hidden: 0 }),
+    [onlyExceptions, allLines, brokenAt],
+  );
+  const lines = filtered.shown;
+  // A different filter is a different paper: the replay starts again from the top.
+  const replay = useReplay(lines.length, selected === null ? null : `${selected}|${onlyExceptions}`, source === "api");
 
   // The paper splits at the broken line, if that line is on this session's paper.
   const tearIndex =
@@ -233,12 +243,27 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
                 onTamper={tamperWithPaper}
                 onRestore={restorePaper}
               />
+              <ExceptionsKey
+                on={onlyExceptions}
+                onToggle={() => setOnlyExceptions((on) => !on)}
+              />
               <TearOffButton />
             </Printer>
 
             <PaperRoll
               torn={torn}
-              upper={lines.length === 0 ? empty : torn ? rows.slice(0, tearIndex) : rows}
+              upper={
+                allLines.length === 0 ? (
+                  empty
+                ) : (
+                  <>
+                    {onlyExceptions && (
+                      <ExceptionNotes hidden={filtered.hidden} nothingToFlag={lines.length === 0} />
+                    )}
+                    {torn ? rows.slice(0, tearIndex) : rows}
+                  </>
+                )
+              }
               lower={torn ? rows.slice(tearIndex) : null}
             />
           </main>
@@ -253,7 +278,7 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
           turn={turnLabel(selectedRoll)}
           title={selectedRoll.title}
           chain={chain}
-          lines={lines}
+          lines={allLines}
           fingerprint={fingerprintText(entries)}
         />
       )}

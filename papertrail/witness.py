@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from papertrail.ignore import Matcher
+from papertrail.watch import is_setup, setup_paths
 
 EXCLUDE: frozenset[str] = frozenset({
     '.git', '.papertrail', 'node_modules', '__pycache__', '.venv',
@@ -46,6 +47,16 @@ def snapshot(root: Path, matcher: Matcher | None = None) -> dict[str, dict[str, 
             rel = abs_path.relative_to(root).as_posix()
             result[rel] = {'size': size, 'sha256': sha256}
 
+    # The recording setup is always snapshotted, even where .gitignore would skip it.
+    for rel in setup_paths(root):
+        if rel in result:
+            continue
+        abs_path = Path(root) / rel
+        try:
+            result[rel] = {'size': abs_path.stat().st_size, 'sha256': _sha256(abs_path)}
+        except OSError:
+            continue
+
     return result
 
 
@@ -63,7 +74,7 @@ def without_ignored(snap: dict[str, dict], root: Path) -> dict[str, dict]:
     the rule skips, so comparing it with a newer snapshot does not report them as deleted.
     """
     matcher = Matcher.load(root)
-    return {p: v for p, v in snap.items() if not matcher.is_ignored(p, False)}
+    return {p: v for p, v in snap.items() if is_setup(p) or not matcher.is_ignored(p, False)}
 
 
 def diff(

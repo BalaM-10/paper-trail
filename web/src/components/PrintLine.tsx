@@ -1,5 +1,5 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { entryText } from "../lib/entryText";
+import { entryText, isSetupChanged } from "../lib/entryText";
 import { inkFor } from "../lib/ink";
 import type { DisplayEntry } from "../lib/synthesiseUndeclared";
 import { MarkerArrow } from "./MarkerArrow";
@@ -58,9 +58,11 @@ export const PrintLine = memo(function PrintLine({ entry, visible, isNext, selec
 
   const verdict = entry.kind === "verdict" ? String(entry.data.verdict) : null;
   const between = entry.kind === "witness" && entry.data.event === "between_turns";
+  const setup = isSetupChanged(entry);
   const classes = [
     "print-line",
     between ? "print-line--between" : "",
+    setup ? "print-line--setup" : "",
     verdict ? "print-line--stamped" : "",
     overall ? "print-line--overall" : "",
     synthetic ? "print-line--note" : "",

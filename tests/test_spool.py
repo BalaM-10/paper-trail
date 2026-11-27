@@ -114,10 +114,10 @@ def test_session_c_has_no_statement(tmp_path):
 def test_last_line_is_the_final_fingerprint_and_count(tmp_path):
     root = _project(tmp_path)
     entries = ledger.read(root / ".papertrail" / "ledger.jsonl")
-    assert len(entries) == 34
+    assert len(entries) == 44
     for sid in ("demo-session-a", "demo-session-c"):
         last = _lines(spool.render_session(root, sid))[-1]
-        assert last == f"{entries[-1]['hash']} (34 lines)"
+        assert last == f"{entries[-1]['hash']} (44 lines)"
 
 
 def test_a_tampered_record_shows_where_the_paper_tore(tmp_path):
@@ -275,7 +275,7 @@ def test_only_the_last_line_is_the_fingerprint_of_the_whole_record(tmp_path):
     text = spool.render_session(root, "demo-session-d")
     entries = ledger.read(root / ".papertrail" / "ledger.jsonl")
     assert text.count("Fingerprint of the record:") == 1
-    assert _lines(text)[-1] == f"{entries[-1]['hash']} (34 lines)"
+    assert _lines(text)[-1] == f"{entries[-1]['hash']} (44 lines)"
 
 
 def test_a_session_with_one_roll_prints_as_it_always_did(tmp_path):

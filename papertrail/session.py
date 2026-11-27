@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from papertrail import ledger, verifier, witness
+from papertrail import ledger, verifier, watch, witness
 from papertrail.ignore import RULE_NAME as IGNORE_RULE
 from papertrail import statement as statement_mod
 from papertrail.outcome import NO_STATEMENT, last_overall, undeclared_from_diff
@@ -71,14 +71,18 @@ def on_turn_start(payload: dict, root: Path, home: Path) -> dict:
         diff = witness.diff(witness.without_ignored(earlier["data"]["snapshot"], root), snap)
         if any(diff.values()):
             event = earlier["data"]["event"]
-            ledger.append(ledger_path, session_id, "witness", {
+            between = {
                 "event":        "between_turns",
                 "diff":         diff,
                 "baseline":     f"{event}:{earlier['seq']}",
                 "witness_seq":  turn_entry["seq"],
                 "evidence_seq": [earlier["seq"], turn_entry["seq"]],
                 "unfinished":   event == "turn",
-            })
+            }
+            setup_files = watch.changed_files(diff)
+            if setup_files:  # the hooks, the statement rule or the MCP settings changed
+                between["setup_changed"] = setup_files
+            ledger.append(ledger_path, session_id, "witness", between)
     return turn_entry
 
 
@@ -151,6 +155,19 @@ def on_stop(payload: dict, root: Path, home: Path) -> dict:
         },
     )
     witness_seq = stop_entry["seq"]
+
+    # --- 3b. The recording setup changed during this turn: say so on its own line,
+    # whether or not the agent declared it. The statement's verdict is not touched.
+    setup_files = watch.changed_files(diff)
+    if setup_files:
+        ledger.append(ledger_path, session_id, "witness", {
+            "event":        "setup_changed",
+            "files":        setup_files,
+            "diff":         watch.setup_changes(diff),
+            "baseline":     baseline_label,
+            "witness_seq":  witness_seq,
+            "evidence_seq": [witness_seq],
+        })
 
     # --- 4. Promote statement.json if present and valid ---
     promoted = False

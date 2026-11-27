@@ -1,5 +1,7 @@
 # Paper Trail
 
+Git records what changed. Paper Trail records what the agent claimed, what actually happened, and whether the two agree.
+
 **Did the agent do what it said?**
 
 Paper Trail checks an AI coding agent's report of its own work against the
@@ -72,6 +74,44 @@ always-on steering rule, so a Power does not replace `init`. See
 | UNVERIFIED | There is no evidence either way. Not the same as wrong. |
 | NO STATEMENT | The agent changed files and wrote no statement. The changes are listed. |
 
+## What this proves, and what it doesn't
+
+**It proves**
+
+- Which files were created, changed or deleted in each turn, checked against a
+  snapshot taken outside the agent's own log.
+- Whether each item in the agent's statement matches that snapshot.
+- Whether the record was edited after it was written.
+
+**It does not prove**
+
+- That the code is correct.
+- Anything, if the hooks are removed. No record is not a clean record.
+- Protection from someone on the same machine who rewrites the whole record and
+  recomputes it, unless the final fingerprint was kept somewhere else. The
+  printout ends with the fingerprint for that reason: copy it out of the project
+  when it matters.
+
+The statement is a structured list of files, checked exactly, with no AI judging
+the result. The record keeps relative paths, sizes and fingerprints, never file
+contents or absolute paths.
+
+**The recording setup.** The hooks, the statement rule and the MCP settings
+(`.kiro/hooks`, `.kiro/steering/statement.md`, `.kiro/settings/mcp.json`) decide
+what gets recorded. The witness always snapshots them, even if `.gitignore` skips
+them. If one of them is created, changed or deleted during a turn, the record
+says so on a line of its own, whether or not the agent mentioned it:
+`RECORDING SETUP CHANGED DURING THIS TURN: <files>. Read this turn's record with care.`
+The page, the print file and the MCP tool `print_session` all show it. A change
+between two turns is mentioned in the between-turns line.
+
+## How this differs
+
+Other tools check an agent's claims against a Git commit range, or sign the log
+of its tool calls. Paper Trail snapshots the folder at every prompt, keeps human
+changes between replies apart from the agent's, and runs inside Kiro through
+hooks, an MCP server and a power.
+
 ## Try the demo
 
 The demo shows an agent running a cleanup script with an ordinary mistake: it
@@ -88,9 +128,33 @@ witness saw the notes file go. The verdict is CONTRADICTED.
    is `OVERALL: CONTRADICTED`.
 
 To see the printout without running anything, build the page (below) and open
-the "Demo" roll. It has four recorded sessions: SUPPORTED, CONTRADICTED, NO
-STATEMENT, and one of two turns, where a person deleted two files between the
-turns and the second turn is still SUPPORTED.
+the "Demo" roll. It has five recorded sessions: SUPPORTED, CONTRADICTED, NO
+STATEMENT, one of two turns, where a person deleted two files between the
+turns and the second turn is still SUPPORTED, and one where the agent edits a
+recording hook, so the page prints the loud setup line.
+
+## Test cases anyone can run
+
+```powershell
+python sample/run_cases.py
+```
+
+Seven cases, each played in a temporary folder with the real hooks' code. The
+script never touches the project's own record. For each case it prints what
+should happen, what did happen, and PASS or FAIL. `python sample/run_cases.py
+--write-readme` rewrites this table, and a test fails if the table is out of date.
+
+<!-- cases:start -->
+| Case | What happens | Expected | Actual | Result |
+|---|---|---|---|---|
+| a) Honest agent | The agent writes one file and says so. | `SUPPORTED` | `SUPPORTED` | pass |
+| b) Change it did not declare | The agent writes two files and mentions one. | `CONTRADICTED; undeclared: extra.txt` | `CONTRADICTED; undeclared: extra.txt` | pass |
+| c) Claim that did not happen | The agent says it wrote a file that was never written. | `CONTRADICTED; contradicted claim: ghost.txt` | `CONTRADICTED; contradicted claim: ghost.txt` | pass |
+| d) No statement | The agent changes a file and writes no statement. | `NO_STATEMENT; undeclared: changed.txt` | `NO_STATEMENT; undeclared: changed.txt` | pass |
+| e) Person changes a file between turns | Between two replies a person edits a file. The second turn is judged on the agent's own work. | `SUPPORTED; between turns: person.txt` | `SUPPORTED; between turns: person.txt` | pass |
+| f) Record edited afterwards | After the run, someone edits the record to hide a deletion. | `Paper torn at line 2` | `Paper torn at line 2` | pass |
+| g) Recording setup changed mid-turn | The agent edits a recording hook and says so. The record is marked either way. | `SUPPORTED; setup changed: .kiro/hooks/record.py` | `SUPPORTED; setup changed: .kiro/hooks/record.py` | pass |
+<!-- cases:end -->
 
 ## The web page
 
@@ -106,6 +170,13 @@ rolls, chosen with the switch above the sessions:
 - **Demo**: the sample sessions, or the live record when the local server is up.
 - **How this was built**: the record of building Paper Trail itself, with its
   real verdicts and totals. A long session is fine: SKIP TO END prints it all.
+
+On the printer, the EXCEPTIONS ONLY key (it stays down while it is on) keeps
+only what needs a look on each roll: claims that are CONTRADICTED or
+UNVERIFIED, NO STATEMENT, changes the agent never mentioned, between-turns
+lines, setup lines and the line where the paper is torn. The page says how many
+lines are hidden, and "Nothing to flag in this turn." when none are left. It
+works the same on the Demo, on "How this was built" and on the live record.
 
 The build record is published with `python sample/export_build_record.py`. It
 copies `.papertrail/ledger.jsonl` unchanged, so the fingerprints still check. It
@@ -160,9 +231,11 @@ Paper Trail was built with Kiro, and it records its own building.
   (init, doctor, pip, the build record), `paper-trail-clean-record` (nothing
   private in the record, statements checked by the stop hook, archive) and
   `paper-trail-turns` (one roll per turn, and changes between turns kept out of
-  the agent's verdict) and `paper-trail-ignore` (the witness skips what
+  the agent's verdict), `paper-trail-ignore` (the witness skips what
   `.gitignore` and a list of common caches skip, long commands print as text,
-  long roll titles are cut to three lines). Each has requirements, a design and tasks.
+  long roll titles are cut to three lines) and `paper-trail-trust` (the recording
+  setup is watched, the EXCEPTIONS ONLY key, runnable test cases, what the
+  record proves). Each has requirements, a design and tasks.
 - **Hooks** (`.kiro/hooks/`): `record-post-tool-use.json` and
   `record-file-delete.json` write the record; `witness-session-start.json`,
   `witness-turn-start.json` (on `UserPromptSubmit`) and `witness-stop.json` take
