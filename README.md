@@ -100,8 +100,10 @@ rolls, chosen with the switch above the sessions:
 The build record is published with `python sample/export_build_record.py`. It
 copies `.papertrail/ledger.jsonl` unchanged, so the fingerprints still check. It
 refuses, and lists each finding, if the record holds an absolute path, the user
-name or the machine name. Until a clean record has been published, the page says
-the build record is not published yet.
+name or the machine name. When earlier records were archived it also writes a
+small note beside the copy, and the page then says the record covers only part of the
+build, with the dates of its first and last line. Until a record has been
+published, the page says the build record is not published yet.
 
 The page shows a "View on GitHub" link only if it is built with an address:
 
@@ -115,7 +117,24 @@ $env:VITE_REPO_URL = "https://github.com/<you>/paper-trail"; npm run build
 python -m papertrail verify <session_id>   # check a statement
 python -m papertrail print <session_id>    # write .papertrail/spool/<session_id>.txt
 python -m papertrail check-chain           # is the paper intact?
+python -m papertrail archive               # put the record away; the next one starts clean
 ```
+
+**What the record never holds.** An absolute path, the user name or the machine
+name. The recorder replaces the project folder with `.`, the home folder with `~`,
+any other absolute path with `[path]/<last part>`, and the names with `[user]` and
+`[machine]`, in any letter case and also inside text that is itself JSON. The
+same rules, in one module, are what `export_build_record.py` checks, so anything
+the recorder wrote can be published.
+
+**Statements are checked for you.** When the stop hook keeps a statement, it
+checks it straight away and records the verdicts. `verify` later shows the same
+verdicts and adds nothing.
+
+**`archive`** moves `.papertrail/ledger.jsonl` to
+`.papertrail/archive/ledger-<UTC time>.jsonl`. It deletes nothing, and refuses if
+the record's fingerprints do not check. The next line recorded starts a new
+record.
 
 `print` writes plain text: 80 columns, numbered lines, the same sentences as the
 screen, and a last line with the fingerprint of the whole record and its line
@@ -127,9 +146,10 @@ Paper Trail was built with Kiro, and it records its own building.
 
 - **Specs** (`.kiro/specs/`): `paper-trail-core` (recorder, witness, verifier),
   `paper-trail-printout` (API, MCP server, the page), `paper-trail-proof` (an
-  honest sample bug, NO STATEMENT, the print file, CI) and `paper-trail-install`
-  (init, doctor, pip, the build record). Each has requirements, a design and
-  tasks.
+  honest sample bug, NO STATEMENT, the print file, CI), `paper-trail-install`
+  (init, doctor, pip, the build record) and `paper-trail-clean-record` (nothing
+  private in the record, statements checked by the stop hook, archive). Each has
+  requirements, a design and tasks.
 - **Hooks** (`.kiro/hooks/`): `record-post-tool-use.json` and
   `record-file-delete.json` write the record; `witness-session-start.json` and
   `witness-stop.json` take the two snapshots. They call `record.py` and

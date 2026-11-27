@@ -17,8 +17,17 @@ def _record(tmp_path: Path, rows: list[tuple[str, str, dict]]) -> Path:
     """A real, chained ledger from (session, kind, data) rows."""
     path = tmp_path / "source" / "ledger.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
-    for session, kind, data in rows:
-        ledger.append(path, session, kind, data)
+    # Written without ledger.append on purpose: append now cleans what these tests need to
+    # find, so a record that already holds it (an old one) is built by hand.
+    previous = "0" * 64
+    lines = []
+    for seq, (session, kind, data) in enumerate(rows, start=1):
+        body = {"seq": seq, "ts": "2026-03-01T09:00:00.000000Z", "session_id": session,
+                "kind": kind, "data": data, "prev_hash": previous}
+        entry = {**body, "hash": ledger._compute_hash(body)}
+        previous = entry["hash"]
+        lines.append(json.dumps(entry, separators=(",", ":")))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
 
@@ -264,3 +273,57 @@ def test_identity_terms_are_lower_case_and_long_enough(monkeypatch):
 def test_scan_without_any_names_still_finds_paths():
     line = json.dumps({"seq": 1, "kind": "tool", "data": {"p": "C:\\x"}})
     assert [f.what for f in scan([line], {})] == ["a drive path"]
+
+
+# ---------------------------------------------------------------------------
+# build-record.json: does the published record cover only part of the build?
+# ---------------------------------------------------------------------------
+
+def test_the_meta_file_says_not_partial_when_nothing_was_archived(tmp_path):
+    source = _record(tmp_path, CLEAN)
+    dest = tmp_path / "out" / "build-ledger.jsonl"
+    assert export(source, dest, TERMS) == ([], [])
+    assert json.loads((dest.parent / "build-record.json").read_text(encoding="utf-8")) == {"partial": False}
+
+
+def test_the_meta_file_says_partial_when_an_earlier_record_was_archived(tmp_path):
+    source = _record(tmp_path, CLEAN)
+    (source.parent / "archive").mkdir()
+    (source.parent / "archive" / "ledger-20260301T090000Z.jsonl").write_text("x\n", encoding="utf-8")
+    dest = tmp_path / "out" / "build-ledger.jsonl"
+    export(source, dest, TERMS)
+    assert json.loads((dest.parent / "build-record.json").read_text(encoding="utf-8")) == {"partial": True}
+    assert not (dest.parent / "build-record.json").read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+def test_a_refusal_writes_no_meta_file_and_keeps_the_old_one(tmp_path):
+    source = _record(tmp_path, [*CLEAN, ("s", "tool", {"c": "C:\\x"})])
+    dest = tmp_path / "out" / "build-ledger.jsonl"
+    dest.parent.mkdir()
+    meta = dest.parent / "build-record.json"
+    export(source, dest, TERMS)
+    assert not meta.exists()
+    meta.write_text('{"partial": true}\n', encoding="utf-8")
+    export(source, dest, TERMS)
+    assert meta.read_text(encoding="utf-8") == '{"partial": true}\n'
+
+
+def test_the_command_says_when_the_record_is_only_part_of_the_build(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(export_mod, "identity_terms", lambda: TERMS)
+    source = _record(tmp_path, CLEAN)
+    (source.parent / "archive").mkdir()
+    (source.parent / "archive" / "ledger-1.jsonl").write_text("x\n", encoding="utf-8")
+    dest = tmp_path / "out" / "b.jsonl"
+    meta = tmp_path / "elsewhere.json"
+    assert main(["--source", str(source), "--dest", str(dest), "--meta", str(meta)]) == 0
+    assert "covers only part of the build" in capsys.readouterr().out
+    assert json.loads(meta.read_text(encoding="utf-8")) == {"partial": True}
+
+
+def test_a_record_the_recorder_wrote_always_passes_the_scan(tmp_path):
+    """The point of the shared module: ledger.append output is publishable."""
+    path = tmp_path / ".papertrail" / "ledger.jsonl"
+    ledger.append(path, "s", "tool", {"tool_input": {"command": "cd C:\\Program Files\\x && cat /home/bob/y"}})
+    ledger.append(path, "s", "error", {"error": "boom", "raw": json.dumps({"cwd": "C:\\Users\\alice\\w"})})
+    dest = tmp_path / "out" / "b.jsonl"
+    assert export(path, dest, {"alice": "the user name", "box-7": "the machine name"}) == ([], [])

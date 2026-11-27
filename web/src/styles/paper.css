@@ -157,6 +157,7 @@ select:focus-visible {
   border-color: var(--band);
   font-weight: bold;
 }
+.build-totals p { margin: 0 0 0.5rem; }
 .build-totals {
   margin: 0 0 0.9rem;
   font-size: 0.82rem;

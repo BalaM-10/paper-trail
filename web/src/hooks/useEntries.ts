@@ -33,6 +33,21 @@ async function fetchBuildEntries(): Promise<Entry[]> {
   if (entries.length === 0 || !sane) throw new Error("not a record");
   return entries;
 }
+/** What the exporter said about the build record. Anything unexpected is "nobody said". */
+export type BuildInfo = { partial: boolean };
+async function fetchBuildInfo(): Promise<BuildInfo | null> {
+  try {
+    const response = await fetch("./demo/build-record.json");
+    if (!response.ok) return null;
+    const data: unknown = JSON.parse(await response.text());
+    if (data && typeof data === "object" && typeof (data as { partial?: unknown }).partial === "boolean") {
+      return { partial: (data as { partial: boolean }).partial };
+    }
+  } catch {
+    // no such file, or not JSON: the page then claims only the dates
+  }
+  return null;
+}
 async function fetchDemoEntries(): Promise<Entry[]> {
   // Relative URL: works from any path the static site is served from.
   const response = await fetch("./demo/ledger.jsonl");
@@ -56,19 +71,23 @@ export function useEntries(pollMs: number = POLL_MS, view: View = "demo") {
   const [original, setOriginal] = useState<Entry[]>(EMPTY);
   const [tampered, setTampered] = useState<Entry[] | null>(null);
   const [source, setSource] = useState<Source>("loading");
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
 
   // Initial load: API first, then the static demo. (Or the build record.)
   useEffect(() => {
     let cancelled = false;
     setOriginal(EMPTY);
     setTampered(null);
+    setBuildInfo(null);
     setSource("loading");
     (async () => {
       if (view === "build") {
         try {
           const data = await fetchBuildEntries();
+          const info = await fetchBuildInfo();
           if (!cancelled) {
             setOriginal(data);
+            setBuildInfo(info);
             setSource("build");
           }
         } catch {
@@ -139,6 +158,7 @@ export function useEntries(pollMs: number = POLL_MS, view: View = "demo") {
   return {
     entries: tampered ?? original,
     source,
+    buildInfo,
     isTampered: tampered !== null,
     tamper,
     restore,

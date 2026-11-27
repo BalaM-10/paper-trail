@@ -151,6 +151,30 @@ describe("live polling", () => {
 
 
 describe("the build record", () => {
+  it("also reads what the exporter said about it, and treats anything odd as nothing", async () => {
+    buildText = demoText;
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    const answer = (meta: string | null) =>
+      vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+        if (String(input) === "./demo/build-record.json") return meta === null ? fake("no", 404) : fake(meta);
+        return original(input);
+      });
+    for (const [meta, expected] of [
+      ['{"partial": true}', { partial: true }],
+      ['{"partial": false}', { partial: false }],
+      ['{"partial": 1}', null],
+      ["nonsense", null],
+      [null, null],
+    ] as const) {
+      answer(meta);
+      const { result, unmount } = renderHook(() => useEntries(2000, "build"));
+      await settle();
+      expect(result.current.source).toBe("build");
+      expect(result.current.buildInfo).toEqual(expected);
+      unmount();
+    }
+  });
+
   it("loads the build file, never calls the API and never polls", async () => {
     buildText = demoText; // any well-formed record will do here
     const { result } = renderHook(() => useEntries(2000, "build"));

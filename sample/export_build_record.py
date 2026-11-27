@@ -10,13 +10,12 @@ finding. It never changes the source: the record is append-only.
 """
 
 import argparse
-import getpass
+import getpass  # noqa: F401  (tests patch it)
 import hashlib
 import json
 import os
-import re
 import shutil
-import socket
+import socket  # noqa: F401  (tests patch it)
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,17 +24,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:  # run as a script from any folder
     sys.path.insert(0, str(ROOT))
 
-from papertrail import ledger  # noqa: E402
+from papertrail import ledger, privacy  # noqa: E402
+from papertrail.privacy import identity_terms  # noqa: E402,F401
 
 DEFAULT_SOURCE = ROOT / ".papertrail" / "ledger.jsonl"
 DEFAULT_DEST = ROOT / "web" / "public" / "demo" / "build-ledger.jsonl"
+META_NAME = "build-record.json"
 REQUIRED_KEYS = ("seq", "ts", "session_id", "kind", "data", "prev_hash", "hash")
-
-# A letter that stands alone, then ":" and a slash. "https://" and "file:///" do not match,
-# because the letter before ":" there belongs to a longer word.
-DRIVE_PATH = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]")
-NETWORK_PATH = re.compile(r"(?<![\\\w])\\\\[\w.$-]+\\[\w.$-]+")
-FOLDER_PATH = re.compile(r"(?:^|[\s\"'=(:,;])/(?:Users|home|root|var|tmp|private|Volumes)/")
 
 SNIPPET = 20  # characters kept either side of a match
 
@@ -50,41 +45,19 @@ class Finding:
     text: str
 
 
-def identity_terms() -> dict[str, str]:
-    """Names that must not appear: the user name and the machine name, lower case."""
-    users = [getpass.getuser(), os.environ.get("USERNAME", ""), os.environ.get("USER", ""), Path.home().name]
-    hosts = [socket.gethostname(), os.environ.get("COMPUTERNAME", ""), os.environ.get("HOSTNAME", "")]
-    hosts += [h.split(".")[0] for h in hosts]
-    terms: dict[str, str] = {}
-    for label, names in (("the user name", users), ("the machine name", hosts)):
-        for name in names:
-            name = name.strip().lower()
-            if len(name) >= 3:
-                terms.setdefault(name, label)
-    return terms
-
-
 def _snippet(text: str, start: int, end: int) -> str:
     piece = text[max(0, start - SNIPPET): end + SNIPPET]
     return " ".join(piece.split())
 
 
 def _scan_text(text: str, terms: dict[str, str]) -> list[tuple[str, str]]:
-    """(what, snippet) for each kind of thing found in one piece of text."""
+    """(what, snippet) for each kind of thing found in one piece of text (first of each kind)."""
     found: list[tuple[str, str]] = []
-    for what, pattern in (
-        ("a drive path", DRIVE_PATH),
-        ("a network path", NETWORK_PATH),
-        ("a path under a user or system folder", FOLDER_PATH),
-    ):
-        match = pattern.search(text)
-        if match:
-            found.append((what, _snippet(text, match.start(), match.end())))
-    lowered = text.lower()
-    for term, label in terms.items():
-        at = lowered.find(term)
-        if at >= 0:
-            found.append((label, _snippet(text, at, at + len(term))))
+    seen: set[str] = set()
+    for what, start, end in privacy.find(text, terms):
+        if what not in seen:
+            seen.add(what)
+            found.append((what, _snippet(text, start, end)))
     return found
 
 
@@ -166,8 +139,19 @@ def check(source: Path, terms: dict[str, str] | None = None) -> tuple[list[str],
     return [], scan(lines, identity_terms() if terms is None else terms)
 
 
-def export(source: Path, dest: Path, terms: dict[str, str] | None = None) -> tuple[list[str], list[Finding]]:
-    """Scan, then copy. Returns (problems, findings); both empty means it was copied."""
+def _has_archive(source: Path) -> bool:
+    """Earlier records were put away (`python -m papertrail archive`), so this one is only part of the build."""
+    return any((source.parent / "archive").glob("ledger-*.jsonl"))
+
+
+def export(
+    source: Path, dest: Path, terms: dict[str, str] | None = None, meta: Path | None = None
+) -> tuple[list[str], list[Finding]]:
+    """
+    Scan, then copy. Returns (problems, findings); both empty means it was copied.
+    Then writes `build-record.json` ({"partial": true|false}) beside the copy, so the
+    page can say when the record covers only part of the build.
+    """
     problems, findings = check(source, terms)
     if problems or findings:
         return problems, findings
@@ -181,6 +165,8 @@ def export(source: Path, dest: Path, terms: dict[str, str] | None = None) -> tup
     finally:
         if temporary.exists():
             temporary.unlink()
+    meta = meta or dest.with_name(META_NAME)
+    meta.write_bytes((json.dumps({"partial": _has_archive(source)}, sort_keys=True) + "\n").encode("utf-8"))
     return [], []
 
 
@@ -188,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Publish the build record for the web page.")
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--dest", type=Path, default=DEFAULT_DEST)
+    parser.add_argument("--meta", type=Path, default=None, help="where to write build-record.json (default: beside --dest)")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):  # a snippet may hold characters the console cannot show
         sys.stdout.reconfigure(errors="replace")
@@ -196,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Refusing: the source and the destination are the same file.")
         return 1
 
-    problems, findings = export(args.source, args.dest)
+    problems, findings = export(args.source, args.dest, meta=args.meta)
     if problems:
         print("Refusing to publish. Nothing was copied.")
         for problem in problems:
@@ -215,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
     entries = ledger.read(args.dest)
     print(f"Copied {len(entries)} lines to {args.dest.name}.")
     print(f"Fingerprint of the record: {entries[-1]['hash']}")
+    if _has_archive(args.source):
+        print("Earlier records were archived, so this one covers only part of the build. The page will say so.")
     return 0
 
 

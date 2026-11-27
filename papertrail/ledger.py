@@ -4,50 +4,41 @@ import contextlib
 import hashlib
 import json
 import os
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from papertrail import privacy
 
 
 # ---------------------------------------------------------------------------
 # Privacy sanitisation
 # ---------------------------------------------------------------------------
 
-def _make_path_re(path: str) -> str:
-    """Split on both / and \\, escape each segment, rejoin with separator pattern."""
-    parts = re.split(r'[/\\]', path)
-    return r'[/\\]'.join(re.escape(p) for p in parts if p)
-
-
-_BOUNDARY = r'(?=[/\\"\'<>\s]|$)'
-
-
-def sanitise(value: str, root: Path, home: Path) -> str:
+def sanitise(value: str, root: Path, home: Path, terms: dict[str, str] | None = None) -> str:
     """
-    Replace all occurrences of root with "." and home with "~".
-
-    root is replaced before home. Matching is case-insensitive and
-    slash-style-insensitive. A match is only recognised when followed
-    by /, \\, ", whitespace, > or end of string.
+    Remove what the record must never hold (see papertrail/privacy.py): the
+    project folder becomes ".", the home folder "~", any other absolute path
+    keeps its last part behind "[path]", and the user name and the machine name
+    become "[user]" and "[machine]". Text with none of these is unchanged.
     """
-    root_pattern = re.compile(_make_path_re(str(root)) + _BOUNDARY, re.IGNORECASE)
-    home_pattern = re.compile(_make_path_re(str(home)) + _BOUNDARY, re.IGNORECASE)
-
-    result = root_pattern.sub('.', value)
-    result = home_pattern.sub('~', result)
-    return result
+    return privacy.scrub(value, root, home, terms)
 
 
 def _sanitise_data(data: dict, root: Path, home: Path) -> dict:
-    """Recurse over every string leaf of data and apply sanitise. Return new dict."""
+    """Clean every string in data, keys included. Return a new dict."""
+    terms = privacy.identity_terms()
+
     def _walk(obj):
         if isinstance(obj, dict):
-            return {k: _walk(v) for k, v in obj.items()}
+            return {
+                (sanitise(k, root, home, terms) if isinstance(k, str) else k): _walk(v)
+                for k, v in obj.items()
+            }
         if isinstance(obj, list):
             return [_walk(item) for item in obj]
         if isinstance(obj, str):
-            return sanitise(obj, root, home)
+            return sanitise(obj, root, home, terms)
         return obj
 
     return _walk(data)
@@ -176,6 +167,7 @@ def append(ledger_path: Path, session_id: str, kind: str, data: dict) -> dict:
         seq += 1
         root = ledger_path.parent.parent  # folder containing .papertrail/
         sanitised_data = _sanitise_data(data, root, Path.home())
+        session_id = sanitise(session_id, root, Path.home())  # an id is text too
         ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
 
         entry_without_hash: dict = {

@@ -25,7 +25,7 @@ import { synthesiseUndeclared } from "./lib/synthesiseUndeclared";
 
 export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {}) {
   const [view, setView] = useState<View>("demo");
-  const { entries, source, tamper, restore, isTampered, forceRefresh } = useEntries(POLL_MS, view);
+  const { entries, source, buildInfo, tamper, restore, isTampered, forceRefresh } = useEntries(POLL_MS, view);
   const { result: chain, unavailable } = useChainCheck(entries);
   const sessions = useMemo(() => buildSessionMeta(entries), [entries]);
 
@@ -165,7 +165,7 @@ export default function App({ repoUrl = __REPO_URL__ }: { repoUrl?: string } = {
             top={
               <>
                 <RecordSwitch view={view} onChange={changeView} />
-                {view === "build" && entries.length > 0 && <BuildTotals entries={entries} />}
+                {view === "build" && entries.length > 0 && <BuildTotals entries={entries} partial={buildInfo ? buildInfo.partial : null} />}
               </>
             }
           />

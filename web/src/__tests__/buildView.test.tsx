@@ -18,9 +18,9 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-function serve(buildText: string | null) {
+function serve(buildText: string | null, metaText: string | null = null) {
   calls = [];
-  const site = staticSite(demoText, buildText);
+  const site = staticSite(demoText, buildText, metaText);
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     calls.push(String(input));
     return site(input);
@@ -137,6 +137,47 @@ describe("the switch on the page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Demo" }));
     await screen.findByRole("button", { name: /Read main\.py/ });
     expect(calls.slice(before).some((c) => c.includes("/api/ledger"))).toBe(true);
+  });
+});
+
+describe("which part of the build the record covers", () => {
+  // the generated record runs from 2026-03-01T09:00:01Z, one second per line
+  it("says which dates it runs from and to, with no claim about the rest, when nobody said", async () => {
+    serve(build.text);
+    await openBuild();
+    expect(screen.getByText("This record is from 1 March 2026.")).toBeInTheDocument();
+    expect(screen.queryByText(/only part of the build/)).toBeNull();
+  });
+
+  it("says it covers only part of the build when the exporter said so", async () => {
+    serve(build.text, '{"partial": true}');
+    await openBuild();
+    expect(
+      await screen.findByText(
+        "This record covers only part of the build: 1 March 2026. Earlier work was archived and is not shown here.",
+      ),
+    ).toBeInTheDocument();
+    expect(visibleLanguage()).not.toMatch(BANNED);
+  });
+
+  it("does not claim a part when the exporter said the record is all of it", async () => {
+    serve(build.text, '{"partial": false}');
+    await openBuild();
+    expect(screen.getByText("This record is from 1 March 2026.")).toBeInTheDocument();
+    expect(screen.queryByText(/only part of the build/)).toBeNull();
+  });
+
+  it.each(["not json", '{"partial": "yes"}', "[]", ""])("ignores a meta file that says %j", async (meta) => {
+    serve(build.text, meta);
+    await openBuild();
+    expect(screen.getByText("This record is from 1 March 2026.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows none of it in the demo view", async () => {
+    serve(build.text, '{"partial": true}');
+    await openDemo();
+    expect(screen.queryByText(/This record/)).toBeNull();
   });
 });
 

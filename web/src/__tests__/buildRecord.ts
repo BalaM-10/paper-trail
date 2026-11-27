@@ -115,10 +115,17 @@ export async function makeRecord(specs: SessionSpec[]): Promise<{ entries: Entry
 }
 
 /** Answers like the static site: no API, the demo file, and (if given) the build record. */
-export function staticSite(demoText: string, buildText: string | null): (input: RequestInfo | URL) => Promise<Response> {
+export function staticSite(
+  demoText: string,
+  buildText: string | null,
+  metaText: string | null = null,
+): (input: RequestInfo | URL) => Promise<Response> {
   return async (input) => {
     const url = String(input);
     if (url.includes("/api/")) throw new TypeError("no server");
+    if (url.includes("build-record.json")) {
+      return metaText === null ? new Response("Not found", { status: 404 }) : ok(metaText);
+    }
     if (url.includes("build-ledger.jsonl")) {
       return buildText === null ? new Response("Not found", { status: 404 }) : ok(buildText);
     }

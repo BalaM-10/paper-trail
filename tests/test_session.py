@@ -329,8 +329,9 @@ def test_ac2_1c_a_promoted_statement_means_no_no_statement(tmp_path):
     _make(tmp_path, "new.txt")
     _write_statement(tmp_path, {"files_created": ["new.txt"]})
     on_stop(_base_payload(), tmp_path, Path.home())
-    assert [e["kind"] for e in _entries(tmp_path)][-2:] == ["witness", "statement"]
-    assert _overall(tmp_path) == []
+    # witness, the statement, and the statement's own checked verdicts (never NO_STATEMENT)
+    assert [e["kind"] for e in _entries(tmp_path)][-4:] == ["witness", "statement", "verdict", "verdict"]
+    assert [o["data"]["verdict"] for o in _overall(tmp_path)] == ["SUPPORTED"]
 
 
 def test_ac2_1d_no_start_snapshot_means_no_baseline_and_no_verdict(tmp_path):
@@ -441,3 +442,149 @@ def test_the_hook_script_records_it_too_and_exits_zero(tmp_path):
     assert last["kind"] == "verdict"
     assert last["data"]["verdict"] == NO_STATEMENT
     assert last["data"]["undeclared"] == [{"path": "made-by-the-agent.txt", "change": "created"}]
+
+
+# ---------------------------------------------------------------------------
+# A promoted statement is checked at once (paper-trail-clean-record R2)
+# ---------------------------------------------------------------------------
+
+def _verdicts(root: Path) -> list[dict]:
+    return _by_kind(root, "verdict")
+
+
+def _overalls(root: Path) -> list[dict]:
+    return [e for e in _verdicts(root) if e["data"].get("kind_detail") == "statement_overall"]
+
+
+def test_ac2_1a_the_verdicts_are_recorded_by_the_stop_hook_itself(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    _write_statement(tmp_path, {"files_created": ["a.txt"]})
+    stop = on_stop(_base_payload(), tmp_path, Path.home())
+
+    kinds = [e["kind"] for e in _entries(tmp_path)]
+    assert kinds == ["witness", "witness", "statement", "verdict", "verdict"]
+    per_claim, overall = _verdicts(tmp_path)
+    assert (per_claim["data"]["path"], per_claim["data"]["verdict"]) == ("a.txt", "SUPPORTED")
+    assert overall["data"]["kind_detail"] == "statement_overall"
+    assert overall["data"]["verdict"] == "SUPPORTED"
+    assert overall["data"]["witness_seq"] == stop["seq"]
+
+
+def test_ac2_1b_a_contradiction_and_an_undeclared_change_are_recorded(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("b", encoding="utf-8")
+    _write_statement(tmp_path, {"files_created": ["a.txt", "ghost.txt"]})
+    on_stop(_base_payload(), tmp_path, Path.home())
+    by_path = {v["data"]["path"]: v["data"]["verdict"] for v in _verdicts(tmp_path) if "path" in v["data"]}
+    assert by_path == {"a.txt": "SUPPORTED", "ghost.txt": "CONTRADICTED"}
+    (overall,) = _overalls(tmp_path)
+    assert overall["data"]["verdict"] == "CONTRADICTED"
+    assert overall["data"]["undeclared"] == [{"path": "b.txt", "change": "created"}]
+
+
+def test_ac2_2_verify_later_adds_nothing(tmp_path, monkeypatch):
+    from papertrail import outcome
+    from papertrail.__main__ import main
+
+    on_start(_base_payload(), tmp_path, Path.home())
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    _write_statement(tmp_path, {"files_created": ["a.txt"]})
+    on_stop(_base_payload(), tmp_path, Path.home())
+    before = _lp(tmp_path).read_bytes()
+
+    monkeypatch.setenv("PAPERTRAIL_ROOT", str(tmp_path))
+    assert outcome.result_for(tmp_path, _SESSION)["overall"] == "SUPPORTED"
+    assert outcome.result_for(tmp_path, _SESSION, 1)["overall"] == "SUPPORTED"
+    assert main(["verify", _SESSION]) == 0
+    assert main(["verify", _SESSION, "1"]) == 0
+    assert _lp(tmp_path).read_bytes() == before
+    assert ledger.verify_chain(_lp(tmp_path)) == (True, None)
+
+
+def test_ac2_3_each_statement_in_a_session_is_checked_once(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    _write_statement(tmp_path, {"files_created": ["a.txt"]})
+    on_stop(_base_payload(), tmp_path, Path.home())
+    (tmp_path / "b.txt").write_text("b", encoding="utf-8")
+    _write_statement(tmp_path, {"files_created": ["b.txt"]})
+    on_stop(_base_payload(), tmp_path, Path.home())
+    overalls = _overalls(tmp_path)
+    assert [o["data"]["verdict"] for o in overalls] == ["SUPPORTED", "SUPPORTED"]
+    assert len({o["data"]["witness_seq"] for o in overalls}) == 2
+    assert len([v for v in _verdicts(tmp_path) if "path" in v["data"]]) == 2
+
+
+def test_ac2_4_a_rejected_statement_is_not_checked(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    (tmp_path / ".papertrail" / "statement.json").write_text('{"summary": "only this"}', encoding="utf-8")
+    on_stop(_base_payload(), tmp_path, Path.home())
+    verdicts = _verdicts(tmp_path)
+    assert [v["data"]["verdict"] for v in verdicts] == ["NO_STATEMENT"]  # the old rule, unchanged
+    assert not _by_kind(tmp_path, "statement")
+
+
+def test_ac2_5_a_statement_that_cannot_be_checked_is_still_promoted_and_nothing_raises(tmp_path):
+    on_start(_base_payload(), tmp_path, Path.home())
+    # an absolute path is not allowed by the statement parser, so the check fails
+    _write_statement(tmp_path, {"files_read": ["/home/someone/x.txt"]})
+    on_stop(_base_payload(), tmp_path, Path.home())  # must not raise
+    assert len(_by_kind(tmp_path, "statement")) == 1
+    (error,) = _by_kind(tmp_path, "error")
+    assert error["data"]["source"] == "session.py auto-check"
+    assert "could not be checked" in error["data"]["error"]
+    assert not _verdicts(tmp_path)
+    assert ledger.verify_chain(_lp(tmp_path)) == (True, None)
+
+
+def test_ac2_5_a_failure_inside_the_verifier_is_an_error_record_too(tmp_path, monkeypatch):
+    from papertrail import session
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("verifier broke")
+
+    monkeypatch.setattr(session.verifier, "verify", boom)
+    on_start(_base_payload(), tmp_path, Path.home())
+    _write_statement(tmp_path)
+    on_stop(_base_payload(), tmp_path, Path.home())
+    assert len(_by_kind(tmp_path, "statement")) == 1
+    assert "verifier broke" in _by_kind(tmp_path, "error")[0]["data"]["error"]
+
+
+def test_ac2_6_the_stop_with_a_statement_and_20_files_is_still_quick(tmp_path):
+    import time
+
+    on_start(_base_payload(), tmp_path, Path.home())
+    names = []
+    for i in range(20):
+        (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+        names.append(f"f{i}.txt")
+    _write_statement(tmp_path, {"files_created": names})
+    started = time.perf_counter()
+    on_stop(_base_payload(), tmp_path, Path.home())
+    assert time.perf_counter() - started < 1.0
+    assert _overalls(tmp_path)[0]["data"]["verdict"] == "SUPPORTED"
+
+
+def test_the_hook_script_checks_the_statement_and_exits_zero(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    project = Path(__file__).resolve().parents[1]
+    hook = project / ".kiro" / "hooks" / "witness.py"
+    env = {**os.environ, "PAPERTRAIL_ROOT": str(tmp_path)}
+    payload = json.dumps({"session_id": "via-hook-2"})
+
+    def run(event: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(hook), event], input=payload, capture_output=True,
+                              text=True, env=env, cwd=str(project), timeout=30)
+
+    assert run("start").returncode == 0
+    (tmp_path / "made.txt").write_text("m", encoding="utf-8")
+    _write_statement(tmp_path, {"files_created": ["made.txt"]})
+    assert run("stop").returncode == 0
+    assert _overalls(tmp_path)[-1]["data"]["verdict"] == "SUPPORTED"

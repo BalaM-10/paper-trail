@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from papertrail import ledger as ledger_mod
-from papertrail import install, outcome, spool
+from papertrail import archive as archive_mod, install, outcome, spool
 
 
 def _get_root() -> Path:
@@ -118,6 +118,24 @@ def _cmd_print(args: list[str]) -> int:
     return 0
 
 
+def _cmd_archive(args: list[str]) -> int:
+    """Move the record to .papertrail/archive/ so the next record starts clean."""
+    if args:
+        print("Usage: python -m papertrail archive", file=sys.stderr)
+        return 1
+    try:
+        done = archive_mod.archive(_get_root())
+    except archive_mod.ArchiveError as exc:
+        print(f"Did not archive: {exc}. Nothing was moved.")
+        return 1
+    except OSError as exc:
+        print(f"Did not archive: {exc.strerror or exc}. Nothing was moved.")
+        return 1
+    for line in archive_mod.describe(done):
+        print(line)
+    return 0
+
+
 def _cmd_init(args: list[str]) -> int:
     """Set up Paper Trail in another Kiro project."""
     force = "--force" in args
@@ -192,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
 
     if not argv:
-        print("Usage: python -m papertrail <verify|check-chain|print|init|doctor|serve> [args]", file=sys.stderr)
+        print("Usage: python -m papertrail <verify|check-chain|print|archive|init|doctor|serve> [args]", file=sys.stderr)
         return 1
 
     cmd, *rest = argv
@@ -202,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_check_chain(rest)
     elif cmd == "print":
         return _cmd_print(rest)
+    elif cmd == "archive":
+        return _cmd_archive(rest)
     elif cmd == "init":
         return _cmd_init(rest)
     elif cmd == "doctor":

@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from papertrail import ledger, witness
+from papertrail import ledger, verifier, witness
+from papertrail import statement as statement_mod
 from papertrail.outcome import NO_STATEMENT, last_overall, undeclared_from_diff
 from papertrail.statement import AGENT_KEYS, parse
 
@@ -111,12 +112,33 @@ def on_stop(payload: dict, root: Path, home: Path) -> dict:
             out.write_text(json.dumps(promoted_data, indent=2), encoding="utf-8")
             stmt_path.unlink()
             promoted = True
+            _check_statement(ledger_path, session_id, out)
 
     # --- 5. Changes but no statement: say so ---
     if not promoted:
         _record_no_statement(ledger_path, session_id, stop_entry, diff, entries)
 
     return stop_entry
+
+
+def _check_statement(ledger_path: Path, session_id: str, statement_file: Path) -> None:
+    """
+    Run the verifier on the statement just promoted, so its verdicts are in the
+    record without anyone running `verify`. The verifier records each statement
+    once (it recognises its own overall verdict), so `verify` later adds nothing.
+    Never raises: a failure becomes an error record.
+    """
+    try:
+        stmt = statement_mod.parse(statement_file)
+        verifier.verify(stmt, ledger.read(ledger_path), session_id, ledger_path=ledger_path)
+    except Exception as exc:  # the hook must never disturb the agent
+        try:
+            ledger.append(ledger_path, session_id, "error", {
+                "error":  f"the statement could not be checked: {type(exc).__name__}: {exc}",
+                "source": "session.py auto-check",
+            })
+        except Exception:
+            pass
 
 
 def _record_no_statement(
